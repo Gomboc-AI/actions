@@ -1,0 +1,41 @@
+name: 'Gomboc.ai CloudFormation Action'
+
+description: 'Run the Gomboc.AI service against your CloudFormation templates'
+
+inputs:
+  gomboc-config:
+    description: 'Gomboc configuration file '
+    required: false
+    default: 'gomboc.yaml'
+  access-token:
+    description: 'Access token needed to perform API side effects'
+    required: false
+    default: ''
+  create-pr:
+    description: 'Create a pull request with the remediations'
+    required: false
+    default: false
+  commit-on-current-branch:
+    description: 'Commit the remediations on the current branch'
+    required: false
+    default: false
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/setup-node@v3
+      with:
+        node-version: 16.20.0
+
+    - run: npm i -g https://gombocdownloads.s3.amazonaws.com/cli.tar
+      shell: bash
+
+    - name: Get OIDC token 
+      id: get-oidc-token
+      run: |
+        echo "ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | python -c "import sys, json; print(json.load(sys.stdin)['value'])")" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - run: |
+        gomboc scan cloudformation github --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --config ${{ inputs.gomboc-config }} --access-token ${{ inputs.access-token }} --create-pr ${{ inputs.create-pr }} --commit-on-current-branch ${{ inputs.commit-on-current-branch }}
+      shell: bash
