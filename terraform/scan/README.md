@@ -1,4 +1,4 @@
-# Gomboc.AI Terraform Action
+# Gomboc.AI Scan Terraform Action
 
 ### Setting up your workflow
 
@@ -36,17 +36,6 @@ Note the minimal set of permissions required:
 | --- | --- |
 | `id-token: write` | Required to authenticate you in our service |
 | `contents: read` | Required to read your Terraform plan and HCL templates |
-
----
-
-Next, use [Github's Checkout Action](https://github.com/marketplace/actions/checkout):
-
-```
-- name: Check the code
-    uses: actions/checkout@v3
-```
-
-This will allow us to scan your repository for Terraform templates. 
 
 ---
 
@@ -88,9 +77,6 @@ jobs:
   gomboc:
     runs-on: ubuntu-latest
     steps:
-      - name: Check the code
-        uses: actions/checkout@v3
-        
       - name: Gomboc.AI - Terraform Scan
         uses: Gomboc-AI/actions/terraform/scan@main
         env:

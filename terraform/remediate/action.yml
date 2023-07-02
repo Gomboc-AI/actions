@@ -1,24 +1,22 @@
-name: 'Gomboc.ai CloudFormation Action'
+name: 'Gomboc.AI Terraform Remediate Action'
 
-description: 'Run the Gomboc.AI service against your CloudFormation templates'
+description: 'Run the Gomboc.AI service against your Terraform code'
 
 inputs:
   gomboc-config:
-    description: 'Gomboc configuration file '
+    description: 'Gomboc configuration file'
     required: false
     default: 'gomboc.yaml'
+  working-directory:
+    description: 'The directory for the Terraform configuration'
+    required: false
+    default: '.'
   access-token:
     description: 'Access token needed to perform API side effects'
-    required: false
-    default: ''
-  create-pr:
+    required: true
+  action:
     description: 'Create a pull request with the remediations'
-    required: false
-    default: false
-  commit-on-current-branch:
-    description: 'Commit the remediations on the current branch'
-    required: false
-    default: false
+    required: true
 
 runs:
   using: "composite"
@@ -39,5 +37,5 @@ runs:
       shell: bash
 
     - run: |
-        gomboc scan cloudformation github --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --config ${{ inputs.gomboc-config }} --access-token ${{ inputs.access-token }} --create-pr ${{ inputs.create-pr }} --commit-on-current-branch ${{ inputs.commit-on-current-branch }}
+        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --config ${{ inputs.gomboc-config }} --working-directory ${{ inputs.working-directory }} --access-token ${{ inputs.access-token }}
       shell: bash
