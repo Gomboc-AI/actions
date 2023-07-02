@@ -39,17 +39,6 @@ Note the minimal set of permissions required:
 
 ---
 
-Next, use [Github's Checkout Action](https://github.com/marketplace/actions/checkout):
-
-```
-- name: Check the code
-    uses: actions/checkout@v3
-```
-
-This will allow us to scan your repository for CloudFormation templates. 
-
----
-
 Finally, add one or more Gomboc.AI actions:
 
 ```
@@ -86,9 +75,6 @@ jobs:
   gomboc-cloudformation:
     runs-on: ubuntu-latest
     steps:
-      - name: Check the code
-        uses: actions/checkout@v3
-        
       - name: Gomboc.AI - CloudFormation Scan
         uses: Gomboc-AI/actions/cloudformation/scan@latest
         env:

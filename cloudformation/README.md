@@ -1,4 +1,4 @@
-# Gomboc.AI CloudFormation Actions
+# Gomboc.AI Scan CloudFormation Actions
 
 
 ## [Gomboc-AI/actions/terraform/scan](/terraform/scan/)
