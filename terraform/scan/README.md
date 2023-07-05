@@ -57,6 +57,10 @@ Finally, add one or more Gomboc.AI actions:
 | `create-pr` | No |  `false` | Create a new PR with remediations | `contents: write` |
 | `commit-on-current-branch` | No |  `false` | Commit remediations into the current branch | `contents: write` |
 
+### Secrets
+
+Currently a Gitihub actions secret is required. Create an actions secret of `GH_TOKEN` or similar. Note: Github doesn't allow actions secrets with `GITHUB_` in the name.
+
 ### Bring it all together
 
 Your completed Gomboc.AI Terraform Workflow should look something like this:
@@ -82,7 +86,7 @@ jobs:
         env:
           FORCE_COLOR: 3
         with:
-          access-token: ${{ secrets.GITHUB_TOKEN }} 
+          access-token: ${{ secrets.GH_TOKEN }} 
           commit-on-current-branch: true
 ```
 
