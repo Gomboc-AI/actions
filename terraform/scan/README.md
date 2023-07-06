@@ -1,6 +1,12 @@
 # Gomboc.AI Scan Terraform Action
 
-### Setting up your workflow
+## When to use this action
+
+Use this action:
+- In a deployment workflow to get remediations to your Terraform plan. Optionally have remediations in a new PR or on your current branch
+- Locally to get a set of observations about your Terraform plan.
+
+## Setting up your workflow
 
 Gomboc's Terraform Action requires a few settings to run on Github Actions.
 
@@ -46,7 +52,7 @@ Finally, add one or more Gomboc.AI actions:
   uses: Gomboc-AI/actions/terraform/scan@main
 ```
 
-### Variables
+## Variables
 
 | variable | Required | Default | Description | Additional permissions |
 | --- | --- | --- | --- | --- |
@@ -57,7 +63,7 @@ Finally, add one or more Gomboc.AI actions:
 | `create-pr` | No |  `false` | Create a new PR with remediations | `contents: write` |
 | `commit-on-current-branch` | No |  `false` | Commit remediations into the current branch | `contents: write` |
 
-### Bring it all together
+## Bring it all together
 
 Your completed Gomboc.AI Terraform Workflow should look something like this:
 
@@ -86,9 +92,13 @@ jobs:
           commit-on-current-branch: true
 ```
 
-`FORCE_COLOR: 3` will force the GitHub console to output all the colors.
+> **Note**
+> `secrets.GITHUB_TOKEN` is provided by GitHub and can be used to authenticate on behalf of GitHub Actions. Read more about it [here](https://docs.github.com/en/actions/security-guides/automatic-token-authentication).
 
-### About Gomboc.AI's configuration file
+> **Note**
+> `FORCE_COLOR: 3` will force the GitHub console to output all the colors.
+
+## About Gomboc.AI's configuration file
 
 It is a YAML file that specifies different parameters for the scan action.
 
@@ -105,4 +115,5 @@ policies:
 
 | Element | Required | Description |
 | --- | --- | --- |
+| <kbd>policies</kbd> | Yes | An object describing your policies |
 | <kbd>policies.must-implement</kbd> | Yes | A list of capabilities that will be enforced |
