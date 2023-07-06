@@ -59,7 +59,7 @@ Finally, add one or more Gomboc.AI actions:
 
 ### Secrets
 
-Currently a Gitihub actions secret is required. Create an actions secret of `GH_TOKEN` or similar. Note: Github doesn't allow actions secrets with `GITHUB_` in the name.
+Currently a Gitihub PAT is required and stored as a Github actions secret. This is to allow a push to the Github repo. Create an actions secret of `GH_TOKEN` or similar. Note: Github doesn't allow actions secrets with `GITHUB_` in the name.
 
 ### Bring it all together
 
