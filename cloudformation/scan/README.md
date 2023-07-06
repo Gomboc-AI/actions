@@ -1,5 +1,11 @@
 # Gomboc.AI CloudFormation Action
 
+## When to use this action
+
+Use this action:
+- In a deployment workflow to get remediations to your CloudFormation templates. Optionally have remediations in a new PR or on your current branch
+- Locally to get a set of observations about your CloudFormation templates.
+
 ## Setting up your workflow
 
 Gomboc's CloudFormation Action requires a few settings to run on Github Actions.
@@ -84,7 +90,11 @@ jobs:
           commit-on-current-branch: true
 ```
 
-`FORCE_COLOR: 3` will force the GitHub console to output all the colors.
+> **Note**
+> `secrets.GITHUB_TOKEN` is provided by GitHub and can be used to authenticate on behalf of GitHub Actions. Read more about it [here](https://docs.github.com/en/actions/security-guides/automatic-token-authentication).
+
+> **Note**
+> `FORCE_COLOR: 3` will force the GitHub console to output all the colors.
 
 ### About Gomboc.AI's configuration file
 
@@ -112,6 +122,8 @@ options:
 
 | Element | Required | Description |
 | --- | --- | --- |
+| <kbd>policies</kbd> | Yes | An object describing your policies |
 | <kbd>policies.must-implement</kbd> | REQUIRED | A list of capabilities that will be enforced |
+| <kbd>options</kbd> | Yes | An object containing additional settings |
 | <kbd>options.search&#x2011;pattern</kbd> | Yes |  A list of search patterns to the CloudFormation templates. (JSON or YAML) |
 | <kbd>options.ignore&#x2011;pattern</kbd> | No |  A list of patterns that will be ignored in the search. Gomboc's config file is ignored by default |

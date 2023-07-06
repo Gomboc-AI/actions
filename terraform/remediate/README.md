@@ -1,6 +1,10 @@
 # Gomboc.AI Terraform Remediate Action
 
-### Setting up your workflow
+## When to use this action
+
+Use this action in a deployment workflow to get remediations to your Terraform code. We require nothing else but your HCL (`.tf`) files!
+
+## Setting up your workflow
 
 Your Gomboc.AI Terraform Remediate workflow should look something like this:
 
@@ -30,30 +34,34 @@ jobs:
           action: submit-for-review
 ```
 
-`FORCE_COLOR: 3` will force the GitHub console to output all the colors.
-
-### Permissions
-
-| Permission | Description |
-| --- | --- |
-| `id-token: write` | Required to authenticate you in our service |
-| `contents: read` | Required to read your Terraform code |
-| `contents: write` | Required if `action: direct-apply` |
-| `pull-requests: write` | Required if `action: submit-for-review` |
-
-### Variables
-
-| Variable | Required | Default | Description |
-| --- | --- | --- | --- |
-| `gomboc-config` | No |  `gomboc.yaml` | Path to Gomboc.AI's configuration file |
-| `working-directory` | No | `.` | The root directory for the Terraform configuration |
-| `access-token` | Yes |   | Access token needed to perform API side effects (`secrets.GITHUB_TOKEN`) |
-| `action` | Yes |   | `direct-apply` will create a commit on the current branch. `submit-for-review` will create a new PR. |
+> **Note**
+> `secrets.GITHUB_TOKEN` is provided by GitHub and can be used to authenticate on behalf of GitHub Actions. Read more about it [here](https://docs.github.com/en/actions/security-guides/automatic-token-authentication).
 
 > **Note**
-> that in order to run the `submit-for-review` action you must have enabled **Allow GitHub Actions to create and approve pull requests** in **Workflow Permissionw** in the **Actions/General** tab of your repository Settings.
+> `FORCE_COLOR: 3` will force the GitHub console to output all the colors.
 
-### About Gomboc.AI's configuration file
+## Permissions
+
+| Permission | Required if | Description |
+| --- | --- | --- |
+| `id-token: write` | Always | Provides authentication |
+| `contents: read` | Always | Access your HCL files |
+| `contents: write` | `action: direct-apply` | Commit remediation(s) |
+| `pull-requests: write` | `action: submit-for-review` | Open a new PR |
+
+## Variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `gomboc-config` |  `gomboc.yaml` | Path to Gomboc.AI's configuration file |
+| `working-directory` | `.` | The root directory for the Terraform configuration |
+| `access-token` |  (Required)  | Access token needed to perform API side effects (`secrets.GITHUB_TOKEN`) |
+| `action` | (Required) | `direct-apply` will create a commit on the current branch.<br>`submit-for-review` will create a new PR. |
+
+> **Note**
+> that in order to run the `submit-for-review` action you must have enabled **Allow GitHub Actions to create and approve pull requests** in your repository Settings (**Actions>General>Workflow Permission**).
+
+## About Gomboc.AI's configuration file
 
 It is a YAML file that specifies different parameters for the remediate action.
 
@@ -70,4 +78,5 @@ policies:
 
 | Element | Required | Description |
 | --- | --- | --- |
-| <kbd>policies.must-implement</kbd> | Yes | A list of capabilities that will be enforced |
+| <kbd>policies</kbd> | Yes | An object describing your policies |
+| <kbd>policies.must-implement</kbd> | Yes | A list of capabilities that must be implemented by your resources |
