@@ -53,30 +53,9 @@ jobs:
 
 | Variable | Default | Description |
 | --- | --- | --- |
-| `gomboc-config` |  `gomboc.yaml` | Path to Gomboc.AI's configuration file |
 | `working-directory` | `.` | The root directory for the Terraform configuration |
 | `access-token` |  (Required)  | Access token needed to perform API side effects (`secrets.GITHUB_TOKEN`) |
 | `action` | (Required) | `direct-apply` will create a commit on the current branch.<br>`submit-for-review` will create a new PR. |
 
 > **Note**
 > that in order to run the `submit-for-review` action you must have enabled **Allow GitHub Actions to create and approve pull requests** in your repository Settings (**Actions>General>Workflow Permission**).
-
-## About Gomboc.AI's configuration file
-
-It is a YAML file that specifies different parameters for the remediate action.
-
-Here's an example:
-
-```
-policies: 
-  must-implement:
-    - Deletion Protection
-    - Request Tracing
-    - Client Authentication via IAM SigV4
-    - Skip Terraform Destroy
-```
-
-| Element | Required | Description |
-| --- | --- | --- |
-| <kbd>policies</kbd> | Yes | An object describing your policies |
-| <kbd>policies.must-implement</kbd> | Yes | A list of capabilities that must be implemented by your resources |

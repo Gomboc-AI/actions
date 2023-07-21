@@ -3,10 +3,6 @@ name: 'Gomboc.AI Terraform Remediate Action'
 description: 'Run the Gomboc.AI service against your Terraform code'
 
 inputs:
-  gomboc-config:
-    description: 'Gomboc configuration file'
-    required: false
-    default: 'gomboc.yaml'
   working-directory:
     description: 'The directory for the Terraform configuration'
     required: false
@@ -37,5 +33,5 @@ runs:
       shell: bash
 
     - run: |
-        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --config ${{ inputs.gomboc-config }} --working-directory ${{ inputs.working-directory }} --access-token ${{ inputs.access-token }}
+        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --working-directory ${{ inputs.working-directory }} --access-token ${{ inputs.access-token }}
       shell: bash
