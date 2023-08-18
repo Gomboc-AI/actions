@@ -19,6 +19,7 @@ on:
 permissions:
   id-token: write
   contents: write
+  pull-requests write
 
 jobs:
   gomboc:
@@ -46,8 +47,8 @@ jobs:
 | --- | --- | --- |
 | `id-token: write` | Always | Provides authentication |
 | `contents: read` | Always | Access your HCL files |
+| `pull-requests: write` | Always | Access to comment on (and create if `action: submit-for-review`) PRs |
 | `contents: write` | `action: direct-apply` | Commit remediation(s) |
-| `pull-requests: write` | `action: submit-for-review` | Open a new PR |
 
 ## Variables
 
