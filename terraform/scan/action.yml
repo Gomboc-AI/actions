@@ -48,3 +48,5 @@ runs:
     - run: |
         gomboc scan terraform github --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --config ${{ inputs.gomboc-config }} --tf-plan ${{ inputs.tf-plan }} --tf-directory ${{ inputs.tf-directory }} --access-token ${{ inputs.access-token }} --create-pr ${{ inputs.create-pr }} --commit-on-current-branch ${{ inputs.commit-on-current-branch }}
       shell: bash
+      env:
+        FORCE_COLOR: 3

@@ -35,3 +35,5 @@ runs:
     - run: |
         gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --working-directory ${{ inputs.working-directory }} --access-token ${{ inputs.access-token }}
       shell: bash
+      env:
+        FORCE_COLOR: 3

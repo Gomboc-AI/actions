@@ -83,8 +83,6 @@ jobs:
     steps:
       - name: Gomboc.AI - CloudFormation Scan
         uses: Gomboc-AI/actions/cloudformation/scan@latest
-        env:
-          FORCE_COLOR: 3
         with:
           access-token: ${{ secrets.GITHUB_TOKEN }} 
           commit-on-current-branch: true
@@ -92,9 +90,6 @@ jobs:
 
 > **Note**
 > `secrets.GITHUB_TOKEN` is provided by GitHub and can be used to authenticate on behalf of GitHub Actions. Read more about it [here](https://docs.github.com/en/actions/security-guides/automatic-token-authentication).
-
-> **Note**
-> `FORCE_COLOR: 3` will force the GitHub console to output all the colors.
 
 ### About Gomboc.AI's configuration file
 
