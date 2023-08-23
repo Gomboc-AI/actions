@@ -27,8 +27,6 @@ jobs:
     steps:
       - name: Gomboc.AI - Terraform Remediate
         uses: Gomboc-AI/actions/terraform/remediate@main
-        env:
-          FORCE_COLOR: 3
         with:
           access-token: ${{ secrets.GITHUB_TOKEN }} 
           working-directory: tf/
@@ -37,9 +35,6 @@ jobs:
 
 > **Note**
 > `secrets.GITHUB_TOKEN` is provided by GitHub and can be used to authenticate on behalf of GitHub Actions. Read more about it [here](https://docs.github.com/en/actions/security-guides/automatic-token-authentication).
-
-> **Note**
-> `FORCE_COLOR: 3` will force the GitHub console to output all the colors.
 
 ## Permissions
 

@@ -8,9 +8,6 @@ permissions:
 on:
   pull_request:
 
-env:
-  FORCE_COLOR: 3
-
 jobs:
   gomboc-ai:
     runs-on: ubuntu-latest
