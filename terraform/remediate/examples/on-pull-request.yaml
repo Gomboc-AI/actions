@@ -1,4 +1,4 @@
-name: Getting started with Gomboc AI
+name: Gomboc AI - On Pull Request 
 
 permissions:
   id-token: write

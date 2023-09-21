@@ -4,7 +4,15 @@
 
 Use this action in a deployment workflow to get remediations to your Terraform code. We require nothing else but your HCL (`.tf`) files!
 
-## Setting up your workflow
+## Quickstart guide 
+
+We recommend starting with these two workflows:
+  - **On Demand Execution**: Trigger our action from GitHub's UI for a quick healthcheck
+  - **On Pull Requests**: Trigger our action everytime you make changes to your IaC
+
+You can copy and paste these workflows from our [examples](/terraform/remediate/examples/). Otherwise, read on for more details.
+
+## Setting up your own workflow
 
 Your Gomboc.AI Terraform Remediate workflow should look something like this:
 
@@ -54,4 +62,4 @@ jobs:
 | `action` | (Required) | `direct-apply` will create a commit on the current branch.<br>`submit-for-review` will create a new PR. |
 
 > **Note**
-> that in order to run the `submit-for-review` action you must have enabled **Allow GitHub Actions to create and approve pull requests** in your repository Settings (**Actions>General>Workflow Permission**).
+> To run the `submit-for-review` action you must have enabled **Allow GitHub Actions to create and approve pull requests** in your repository Settings (**Actions>General>Workflow Permission**).
