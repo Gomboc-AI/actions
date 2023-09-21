@@ -7,10 +7,10 @@ Use this action in a deployment workflow to get remediations to your Terraform c
 ## Bootstrap your workflow
 
 If you are in a hurry, we recommend setting up two workflows:
-  - **Manual dispatch**: Trigger our action on demand for a quick healthcheck
+  - **On demand execution**: Trigger our action from GitHub's UI for a quick healthcheck
   - **Pull requests**: Trigger our action everytime you make changes to your IaC
 
-You can copy and paste these workflows from our [examples](/terraform/remediate/examples/). Read on if you want more details.
+You can copy and paste these workflows from our [examples](/terraform/remediate/examples/). Otherwise, read on for more details.
 
 ## Setting up your own workflow
 

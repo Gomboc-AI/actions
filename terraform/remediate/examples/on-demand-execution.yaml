@@ -1,4 +1,4 @@
-name: Gomboc AI - Manual Dispatch
+name: Gomboc AI - On Demand Execution
 
 permissions:
   id-token: write
