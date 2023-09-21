@@ -1,0 +1,19 @@
+name: Gomboc AI - On Pull Request 
+
+permissions:
+  id-token: write
+  contents: write
+  pull-requests: write
+  
+on:
+  pull_request:
+
+jobs:
+  gomboc-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Gomboc-AI/actions/terraform/remediate@main
+        with:
+          working-directory: the-tf-directory-in-your-repo
+          access-token: ${{ secrets.GITHUB_TOKEN }}
+          action: direct-apply

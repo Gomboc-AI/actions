@@ -1,4 +1,4 @@
-name: Getting started with Gomboc AI
+name: Gomboc AI - Manual Dispatch
 
 permissions:
   id-token: write
@@ -6,7 +6,7 @@ permissions:
   pull-requests: write
   
 on:
-  pull_request:
+  workflow_dispatch:
 
 jobs:
   gomboc-ai:
@@ -16,4 +16,4 @@ jobs:
         with:
           working-directory: the-tf-directory-in-your-repo
           access-token: ${{ secrets.GITHUB_TOKEN }}
-          action: direct-apply
+          action: submit-for-review
