@@ -4,9 +4,9 @@
 
 Use this action in a deployment workflow to get remediations to your Terraform code. We require nothing else but your HCL (`.tf`) files!
 
-## Bootstrap your workflow
+## Quickstart guide 
 
-If you are in a hurry, we recommend setting up two workflows:
+We recommend starting with these two workflows:
   - **On demand execution**: Trigger our action from GitHub's UI for a quick healthcheck
   - **Pull requests**: Trigger our action everytime you make changes to your IaC
 
@@ -62,4 +62,4 @@ jobs:
 | `action` | (Required) | `direct-apply` will create a commit on the current branch.<br>`submit-for-review` will create a new PR. |
 
 > **Note**
-> In order to run the `submit-for-review` action you must have enabled **Allow GitHub Actions to create and approve pull requests** in your repository Settings (**Actions>General>Workflow Permission**).
+> To run the `submit-for-review` action you must have enabled **Allow GitHub Actions to create and approve pull requests** in your repository Settings (**Actions>General>Workflow Permission**).
