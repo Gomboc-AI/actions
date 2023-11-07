@@ -27,7 +27,7 @@ on:
 permissions:
   id-token: write
   contents: write
-  pull-requests write
+  pull-requests: write
 
 jobs:
   gomboc:
