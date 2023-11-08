@@ -1,4 +1,4 @@
-# Gomboc.AI Scan CloudFormation Actions
+# <img src="../assets/cloudformation-logo.png" style="margin-right:10px" width="24"/> Gomboc.AI CloudFormation Actions
 
 
 ## [Gomboc-AI/actions/terraform/scan](/terraform/scan/)

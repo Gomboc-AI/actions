@@ -1,4 +1,4 @@
-# Gomboc.AI Terraform Remediate Action
+# <img src="../../assets/terraform-logo.png" style="margin-right:10px" width="24"/> Gomboc.AI Terraform Remediate Action
 
 ## When to use this action
 
