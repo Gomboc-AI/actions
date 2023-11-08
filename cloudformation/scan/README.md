@@ -1,4 +1,4 @@
-# Gomboc.AI CloudFormation Action
+# <img src="../../assets/cloudformation-logo.png" style="margin-right:10px" width="24"/> Gomboc.AI CloudFormation Scan Action
 
 ## When to use this action
 

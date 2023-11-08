@@ -1,8 +1,4 @@
-# Gomboc.AI Terraform Action
-
-## [Gomboc-AI/actions/terraform/scan](/terraform/scan/)
-
-Scan your Terraform plan and remediate policy violations directly in your code
+# <img src="../assets/terraform-logo.png" style="margin-right:10px" width="24"/> Gomboc.AI Terraform Actions
 
 ## [Gomboc-AI/actions/terraform/remediate](/terraform/remediate/)
 
