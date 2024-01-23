@@ -7,11 +7,8 @@ inputs:
     description: 'The directory for the Terraform configuration'
     required: false
     default: '.'
-  access-token:
-    description: 'Access token needed to perform API side effects'
-    required: true
   action:
-    description: 'Create a pull request with the remediations'
+    description: 'direct-apply | submit-for-review'
     required: true
 
 runs:
@@ -33,7 +30,7 @@ runs:
       shell: bash
 
     - run: |
-        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --working-directory ${{ inputs.working-directory }} --access-token ${{ inputs.access-token }}
+        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --working-directory ${{ inputs.working-directory }}
       shell: bash
       env:
         FORCE_COLOR: 3
