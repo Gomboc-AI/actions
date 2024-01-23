@@ -1,10 +1,5 @@
 name: Gomboc AI - On Demand Execution
 
-permissions:
-  id-token: write
-  contents: write
-  pull-requests: write
-  
 on:
   workflow_dispatch:
 
@@ -15,5 +10,4 @@ jobs:
       - uses: Gomboc-AI/actions/terraform/remediate@main
         with:
           working-directory: the-tf-directory-in-your-repo
-          access-token: ${{ secrets.GITHUB_TOKEN }}
           action: submit-for-review
