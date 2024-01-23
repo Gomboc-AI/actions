@@ -19,6 +19,10 @@ Your Gomboc.AI Terraform Remediate workflow should look something like this:
 ```
 name: Gomboc.AI Terraform
 
+permissions:
+  id-token: write
+  contents: read
+
 on:
   pull_request:
   push:
@@ -34,6 +38,9 @@ jobs:
           working-directory: tf/
           action: submit-for-review
 ```
+
+> **Note**
+> Include the permissions as shown above
 
 ## Variables
 
