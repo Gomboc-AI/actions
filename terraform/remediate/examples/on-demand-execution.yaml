@@ -13,5 +13,4 @@ jobs:
     steps:
       - uses: Gomboc-AI/actions/terraform/remediate@main
         with:
-          working-directory: the-tf-directory-in-your-repo
           action: submit-for-review

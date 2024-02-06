@@ -1,0 +1,53 @@
+name: 'Gomboc.AI Terraform Remediate Action'
+
+description: 'Run the Gomboc.AI service against your Terraform code'
+
+inputs:
+  action:
+    description: 'direct-apply | submit-for-review'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-node@v3
+      with:
+        node-version: 18.17.0
+
+    - name: Install CLI
+      run: |
+        cd ${GITHUB_ACTION_PATH} 
+        npm i -g v0.6.0.tar
+      shell: bash
+
+    - name: Get OIDC token 
+      id: get-oidc-token
+      run: |
+        echo "ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | python -c "import sys, json; print(json.load(sys.stdin)['value'])")" >> $GITHUB_OUTPUT
+      shell: bash
+    
+    - name: Run Gomboc
+      env:
+        FORCE_COLOR: 3
+      run: |
+        if [[ ${{ github.event_name }} != "pull_request" && ${{ github.event_name }} != "push" ]]; then
+          echo -e "\033[0;31mUnsupported event type: ${{ github.event_name }}. Try on:push or on:pull_request\033[0m"
+          exit 0
+        fi
+        if [ ${{ github.event_name }} == "pull_request" ]; then
+          after=${{ github.event.pull_request.base.sha }}
+          before=${{ github.sha }}
+          echo "target_directories=$(for i in $(git diff --name-only --diff-filter=ACMRT "$after" "$before") ; \
+          do dirname $i ; done | sort -u | xargs)" >> "$GITHUB_OUTPUT"
+        elif [ ${{ github.event_name }} == "push" ]; then
+          after=${{ github.event.after }}
+          before=${{ github.event.before }}
+          echo "target_directories=$(for i in $(git diff --name-only --diff-filter=ACMRT "$after" "$before") ; \
+          do dirname $i ; done | sort -u | xargs)" >> "$GITHUB_OUTPUT"
+        fi
+        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories ${{ steps.get-target-directories.outputs.target_directories }}
+      shell: bash

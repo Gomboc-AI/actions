@@ -35,16 +35,14 @@ jobs:
       - name: Gomboc.AI - Terraform Remediate
         uses: Gomboc-AI/actions/terraform/remediate@main
         with:
-          working-directory: tf/
           action: submit-for-review
 ```
 
 > **Note**
 > Include the permissions as shown above
 
-## Variables
+## Inputs
 
-| Variable | Default | Description |
+| Input | Default | Description |
 | --- | --- | --- |
-| `working-directory` | `.` | The root directory for the Terraform configuration |
 | `action` | (Required) | `direct-apply` will create a commit on the current branch.<br>`submit-for-review` will create a new PR. |
