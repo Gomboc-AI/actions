@@ -49,5 +49,5 @@ runs:
           echo "target_directories=$(for i in $(git diff --name-only --diff-filter=ACMRT "$after" "$before") ; \
           do dirname $i ; done | sort -u | xargs)" >> "$GITHUB_OUTPUT"
         fi
-        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories ${{ steps.get-target-directories.outputs.target_directories }}
+        gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
       shell: bash
