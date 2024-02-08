@@ -1,4 +1,4 @@
-name: Gomboc AI - On Pull Request 
+name: Gomboc AI - On Push
 
 permissions:
   id-token: write
@@ -13,5 +13,4 @@ jobs:
     steps:
       - uses: Gomboc-AI/actions/terraform/remediate@main
         with:
-          working-directory: the-tf-directory-in-your-repo
-          action: direct-apply
+          action: submit-for-review

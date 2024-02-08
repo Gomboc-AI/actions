@@ -2,7 +2,7 @@
 
 ## When to use this action
 
-Use this action in a deployment workflow to get remediations to your Terraform code. 
+Use this action in a deployment workflow to get remediations to your Terraform code. It can be used with either `on:push` or `on:pull_request` [GitHub events](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows)  
 
 ## Quickstart guide 
 
@@ -35,16 +35,14 @@ jobs:
       - name: Gomboc.AI - Terraform Remediate
         uses: Gomboc-AI/actions/terraform/remediate@main
         with:
-          working-directory: tf/
           action: submit-for-review
 ```
 
 > **Note**
-> Include the permissions as shown above
+> Include the permissions as shown above. `id-token:write` is needed to authenticate you, `contents:read` is needed to discover IaC files with changes. 
 
-## Variables
+## Inputs
 
-| Variable | Default | Description |
+| Input | Default | Description |
 | --- | --- | --- |
-| `working-directory` | `.` | The root directory for the Terraform configuration |
 | `action` | (Required) | `direct-apply` will create a commit on the current branch.<br>`submit-for-review` will create a new PR. |
