@@ -2,7 +2,7 @@
 
 ## When to use this action
 
-Use this action in a deployment workflow to get remediations to your Terraform code. 
+Use this action in a deployment workflow to get remediations to your Terraform code. It can be used with either `on:push` or `on:pull_request` [GitHub events](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows)  
 
 ## Quickstart guide 
 
@@ -39,7 +39,7 @@ jobs:
 ```
 
 > **Note**
-> Include the permissions as shown above
+> Include the permissions as shown above. `id-token:write` is needed to authenticate you, `contents:read` is needed to discover IaC files with changes. 
 
 ## Inputs
 
