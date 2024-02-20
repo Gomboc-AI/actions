@@ -16,7 +16,7 @@ runs:
         its_gomboc_prod=${{ github.actor == 'gomboc-ai[bot]' }}
         its_gomboc_beta=${{ github.actor == 'gomboc-ai-beta[bot]' }}
         its_gomboc_local=${{ github.actor == 'gomboc-local-development[bot]' }}
-        if [[ $its_gomboc_prod || $its_gomboc_beta || $its_gomboc_local ]]; then
+        if [[ $its_gomboc_prod == true || $its_gomboc_beta == true || $its_gomboc_local == true ]]; then
           echo "its_gomboc=true" >> $GITHUB_OUTPUT
         else
           echo "its_gomboc=false" >> $GITHUB_OUTPUT
@@ -55,6 +55,10 @@ runs:
         after=${{ github.event.pull_request.base.sha }}
         before=${{ github.sha }}
         target_directories=$(for i in $(git diff --name-only --diff-filter=ACMRT "$after" "$before") ; do dirname $i ; done | sort -u | xargs)
+        if [ -z "$target_directories" ]; then
+          echo -e "\033[0;31mNo changes detected\033[0m"
+          exit 0
+        fi
         gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
       shell: bash
 
@@ -66,6 +70,10 @@ runs:
         after=${{ github.event.after }}
         before=${{ github.event.before }}
         target_directories=$(for i in $(git diff --name-only --diff-filter=ACMRT "$after" "$before") ; do dirname $i ; done | sort -u | xargs)
+        if [ -z "$target_directories" ]; then
+          echo -e "\033[0;31mNo changes detected\033[0m"
+          exit 0
+        fi
         gomboc terraform remediate remote ${{ inputs.action }} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
       shell: bash
 
