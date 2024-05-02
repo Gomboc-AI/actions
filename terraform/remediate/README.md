@@ -6,11 +6,9 @@ Use this action in a deployment workflow to get remediations to your Terraform c
 
 ## Quickstart guide 
 
-We recommend starting with these two workflows:
-  - **On Demand Execution**: Trigger our action from GitHub's UI for a quick healthcheck
-  - **On Pull Requests**: Trigger our action everytime you make changes to your IaC
+We recommend setting up our action on `pull_request`. Every time you open a PR with changes to IaC files, we will discover and scan them.
 
-You can copy and paste these workflows from our [examples](/terraform/remediate/examples/). Otherwise, read on for more details.
+You can copy and paste these workflows from our [examples](/terraform/remediate/examples/).
 
 ## Setting up your own workflow
 
@@ -25,8 +23,6 @@ permissions:
 
 on:
   pull_request:
-  push:
-    branches: [ main ]
 
 jobs:
   gomboc:
@@ -34,15 +30,7 @@ jobs:
     steps:
       - name: Gomboc.AI - Terraform Remediate
         uses: Gomboc-AI/actions/terraform/remediate@main
-        with:
-          action: submit-for-review
 ```
 
 > **Note**
-> Include the permissions as shown above. `id-token:write` is needed to authenticate you, `contents:read` is needed to discover IaC files with changes. 
-
-## Inputs
-
-| Input | Default | Description |
-| --- | --- | --- |
-| `action` | (Required) | `direct-apply` will create a commit on the current branch.<br>`submit-for-review` will create a new PR. |
+> Include the permissions as shown above. `id-token:write` is needed to authenticate you, `contents:read` is needed to discover IaC files with changes
