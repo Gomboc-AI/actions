@@ -32,7 +32,7 @@ runs:
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       run: |
         cd ${GITHUB_ACTION_PATH} 
-        npm i -g v0.7.1.tar
+        npm i -g v0.7.2.tar
       shell: bash
 
     - name: Get OIDC token 
