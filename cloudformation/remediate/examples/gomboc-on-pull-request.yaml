@@ -1,0 +1,14 @@
+name: Gomboc AI - On Pull Request 
+
+permissions:
+  id-token: write
+  contents: read
+
+on:
+  pull_request:
+
+jobs:
+  gomboc-ai:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Gomboc-AI/actions/cloudformation/remediate@main
