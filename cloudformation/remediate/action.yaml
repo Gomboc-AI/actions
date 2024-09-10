@@ -1,6 +1,6 @@
-name: 'Gomboc.AI Terraform Remediate Action'
+name: 'Gomboc.AI CloudFormation Remediate Action'
 
-description: 'Run the Gomboc.AI service against your Terraform code'
+description: 'Run the Gomboc.AI service against your CloudFormation code'
 
 runs:
   using: "composite"
@@ -54,7 +54,7 @@ runs:
           echo -e "\033[0;31mNo changes detected\033[0m"
           exit 0
         fi
-        gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
+        gomboc cloudformation remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
       shell: bash
 
     - name: Handle push event
@@ -69,7 +69,7 @@ runs:
           echo -e "\033[0;31mNo changes detected\033[0m"
           exit 0
         fi
-        gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
+        gomboc cloudformation remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
       shell: bash
 
     - name: Handle unsupported event types
