@@ -28,13 +28,6 @@ runs:
       with:
         node-version: 18.17.0
 
-    - name: Install CLI
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
-      run: |
-        cd ${GITHUB_ACTION_PATH} 
-        npm i -g v0.8.0.tar
-      shell: bash
-
     - name: Get OIDC token 
       id: get-oidc-token
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
