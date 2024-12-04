@@ -5,6 +5,7 @@ description: 'Run the Gomboc.AI service against your Terraform code'
 inputs:
   GOMBOC_STAGE:  # id of input
     required: false
+    default: 'PROD'
   GOMBOC_DEBUG:
     required: false
 
@@ -57,8 +58,8 @@ runs:
         echo HELLO ${{inputs.GOMBOC_DEBUG}}
         docker run --rm gombocai/cli:latest \
         sh -c "gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}" \
-        -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
-        -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}}
+        -e GOMBOC_DEBUG=TRUE \
+        -e GOMBOC_STAGE=BETA
       shell: bash
 
     - name: Handle push event
