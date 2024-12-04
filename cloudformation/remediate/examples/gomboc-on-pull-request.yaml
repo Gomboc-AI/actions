@@ -8,8 +8,6 @@ on:
   pull_request:
 
 jobs:
-  container:
-      image: gombocai/cli:latest 
   gomboc-ai:
     runs-on: ubuntu-latest
     steps:

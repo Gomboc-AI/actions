@@ -2,6 +2,13 @@ name: 'Gomboc.AI CloudFormation Remediate Action'
 
 description: 'Run the Gomboc.AI service against your CloudFormation code'
 
+inputs:
+  GOMBOC_STAGE:  # id of input
+    required: false
+    default: 'PROD'
+  GOMBOC_DEBUG:
+    required: false
+
 runs:
   using: "composite"
   steps:
@@ -47,7 +54,11 @@ runs:
           echo -e "\033[0;31mNo changes detected\033[0m"
           exit 0
         fi
-        gomboc cloudformation remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}
+        docker run --rm \
+          -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
+          -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}} \
+          gombocai/cli:latest \
+          sh -c "gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}"       
       shell: bash
 
     - name: Handle push event
