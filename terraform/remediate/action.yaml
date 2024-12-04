@@ -2,6 +2,13 @@ name: 'Gomboc.AI Terraform Remediate Action'
 
 description: 'Run the Gomboc.AI service against your Terraform code'
 
+inputs:
+  GOMBOC_STAGE:  # id of input
+    required: false
+    default: 'PROD'
+  GOMBOC_DEBUG:
+    required: false
+
 runs:
   using: "composite"
   steps:
@@ -28,20 +35,13 @@ runs:
       with:
         node-version: 18.17.0
 
-    - name: Install CLI
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
-      run: |
-        cd ${GITHUB_ACTION_PATH} 
-        npm i -g v0.8.0.tar
-      shell: bash
-
     - name: Get OIDC token 
       id: get-oidc-token
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       run: |
         echo "ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | python -c "import sys, json; print(json.load(sys.stdin)['value'])")" >> $GITHUB_OUTPUT
       shell: bash
-    
+
     - name: Handle pull_request event
       if: github.event_name == 'pull_request' && steps.its-gomboc.outputs.its_gomboc == 'false'
       env:
@@ -54,7 +54,12 @@ runs:
           echo -e "\033[0;31mNo changes detected\033[0m"
           exit 0
         fi
-        gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}
+        docker run --rm \
+          -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
+          -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}} \
+          gombocai/cli:latest \
+          sh -c "gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}" 
+
       shell: bash
 
     - name: Handle push event
