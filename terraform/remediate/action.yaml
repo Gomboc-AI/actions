@@ -5,7 +5,7 @@ description: 'Run the Gomboc.AI service against your Terraform code'
 inputs:
   GOMBOC_STAGE:  # id of input
     required: false
-  GOMBOC_DEBUT:
+  GOMBOC_DEBUG:
     required:false
 
 runs:
