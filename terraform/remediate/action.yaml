@@ -34,7 +34,7 @@ runs:
       run: |
         echo "ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | python -c "import sys, json; print(json.load(sys.stdin)['value'])")" >> $GITHUB_OUTPUT
       shell: bash
-    
+
     - name: Handle pull_request event
       if: github.event_name == 'pull_request' && steps.its-gomboc.outputs.its_gomboc == 'false'
       env:
@@ -47,7 +47,7 @@ runs:
           echo -e "\033[0;31mNo changes detected\033[0m"
           exit 0
         fi
-        gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}
+        docker run --rm gombocai/cli:latest sh -c "gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}"
       shell: bash
 
     - name: Handle push event
