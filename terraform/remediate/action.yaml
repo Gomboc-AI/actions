@@ -6,7 +6,7 @@ inputs:
   GOMBOC_STAGE:  # id of input
     required: false
   GOMBOC_DEBUG:
-    required:false
+    required: false
 
 runs:
   using: "composite"
