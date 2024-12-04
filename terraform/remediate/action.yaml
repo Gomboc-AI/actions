@@ -49,8 +49,8 @@ runs:
         fi
         docker run --rm gombocai/cli:latest \
         sh -c "gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}" \
-        -e GOMBOC_DEBUG=$GOMBOC_DEBUG
-        -e GOMBOC_STAGE=$GOMBOC_STAGE
+        -e GOMBOC_DEBUG=$INPUT_GOMBOC_DEBUG
+        -e GOMBOC_STAGE=$INPUT_GOMBOC_STAGE
       shell: bash
 
     - name: Handle push event
