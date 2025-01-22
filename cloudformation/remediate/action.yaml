@@ -8,7 +8,12 @@ inputs:
     default: 'PROD'
   GOMBOC_DEBUG:
     required: false
-
+  effect:
+    required: false
+    default: 'submit-for-review'
+    enum:
+      - 'submit-for-review'
+      - 'preview'
 runs:
   using: "composite"
   steps:
@@ -58,7 +63,7 @@ runs:
           -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
           -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}} \
           gombocai/cli:latest \
-          sh -c "gomboc cloudformation remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}"
+          sh -c "gomboc cloudformation remediate remote ${{inputs.effect}} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }}"
       shell: bash
 
     - name: Handle push event
@@ -73,7 +78,7 @@ runs:
           echo -e "\033[0;31mNo changes detected\033[0m"
           exit 0
         fi
-        gomboc cloudformation remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
+        gomboc cloudformation remediate remote ${{inputs.effect}} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
       shell: bash
 
     - name: Handle unsupported event types
