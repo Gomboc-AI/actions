@@ -9,7 +9,7 @@ inputs:
   GOMBOC_DEBUG:
     required: false
   effect:
-    required: False
+    required: false
     default: 'submit-for-review'
     enum:
       - 'submit-for-review'
