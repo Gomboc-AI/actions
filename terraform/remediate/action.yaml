@@ -80,7 +80,7 @@ runs:
           echo -e "\033[0;31mNo changes detected\033[0m"
           exit 0
         fi
-        gomboc terraform remediate remote submit-for-review --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
+        gomboc terraform remediate remote ${{inputs.EFFECT}} --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories
       shell: bash
 
     - name: Handle unsupported event types
