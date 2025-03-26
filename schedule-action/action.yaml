@@ -3,6 +3,11 @@ name: 'Gomboc.AI Scheduled Action'
 description: 'Run the Gomboc.AI service against your Terraform code'
 
 inputs:
+  GOMBOC_STAGE: 
+    required: false
+    default: 'PROD'
+  GOMBOC_DEBUG:
+    required: false
   effect:
     description: "'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
     required: false
