@@ -76,6 +76,8 @@ runs:
           exit 0
         fi
         docker run --rm \
+          -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
+          -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}} \
           gombocai/cli:${{ inputs.cli-version }} \
           sh -c "gomboc ${{inputs.effect}} on-pull-request --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }} --iac ${{ inputs.iac }}" 
 
