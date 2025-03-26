@@ -3,6 +3,11 @@ name: 'Gomboc.AI Scheduled Action'
 description: 'Run the Gomboc.AI service against your Terraform code'
 
 inputs:
+  GOMBOC_STAGE:  # id of input
+    required: false
+    default: 'PROD'
+  GOMBOC_DEBUG:
+    required: false
   effect:
     description: "'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
     required: false
@@ -65,6 +70,8 @@ runs:
         FORCE_COLOR: 3
       run: |
         docker run --rm \
+          -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
+          -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}} \
           gombocai/cli:${{ inputs.cli-version }} \
           sh -c "gomboc ${{ inputs.effect }} on-schedule --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directory ${{ target-directory }} --iac ${{ inputs.iac }}"
 
