@@ -1,0 +1,76 @@
+name: 'Gomboc.AI Scheduled Action'
+
+description: 'Run the Gomboc.AI service against your Terraform code'
+
+inputs:
+  GOMBOC_STAGE: 
+    required: false
+    default: 'PROD'
+  GOMBOC_DEBUG:
+    required: false
+  effect:
+    description: "'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
+    required: false
+    default: 'submit-for-review'
+    enum:
+      - 'submit-for-review'
+      - 'audit'
+  target-directory:
+    description: "The directory that contains your IaC files"
+    required: true
+    type: string
+  iac:
+    description: "A space separated list with the IaC you want us to check"
+    required: true
+    type: array
+    items:
+      type: string
+      enum:
+        - 'cloudformation'
+        - 'terraform'
+  recurse:
+    description: "When set to true, Gomboc will check additional directories within the target-directory and try to remediate any IaC files found"
+    required: false
+    default: false
+    type: boolean
+  cli-version:
+    description: "The specific CLI version you would like us to use"
+    required: false
+    default: '1.0.2'
+    type: string
+
+runs:
+  using: "composite"
+  steps:
+    - name: Handle unsupported event types
+      if: github.event_name != 'schedule'
+      env:
+        FORCE_COLOR: 3
+      run: |
+        echo -e "\033[0;31mUnsupported event type: ${{ github.event_name }}. Try on:push or on:pull_request\033[0m"
+        exit 0
+      shell: bash
+
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - uses: actions/setup-node@v3
+      with:
+        node-version: 18.17.0
+
+    - name: Get OIDC token 
+      id: get-oidc-token
+      run: |
+        echo "ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | python -c "import sys, json; print(json.load(sys.stdin)['value'])")" >> $GITHUB_OUTPUT
+      shell: bash
+
+    - name: Handle pull_request event
+      env:
+        FORCE_COLOR: 3
+      run: |
+        docker run --rm \
+          gombocai/cli:${{ inputs.cli-version }} \
+          sh -c "gomboc ${{ inputs.effect }} on-schedule --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directory ${{ target-directory }} --iac ${{ inputs.iac }}"
+
+      shell: bash
