@@ -1,12 +1,16 @@
-name: 'Gomboc.AI Scheduled Action'
+name: 'Gomboc.AI On Schedule Action'
 
-description: 'Run the Gomboc.AI service against your Terraform code'
+description: 'Secure your IaC with Gomboc.AI'
 
 inputs:
-  GOMBOC_STAGE: 
+  GOMBOC_SERVER_URL: 
+    description: 'Internal use only'
     required: false
-    default: 'PROD'
+  GOMBOC_CLIENT_URL: 
+    description: 'Internal use only'
+    required: false
   GOMBOC_DEBUG:
+    description: 'Internal use only'
     required: false
   effect:
     description: "'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
@@ -36,7 +40,7 @@ inputs:
   cli-version:
     description: "The specific CLI version you would like us to use"
     required: false
-    default: '1.0.2'
+    default: '1.0.4'
     type: string
 
 runs:
@@ -47,7 +51,7 @@ runs:
       env:
         FORCE_COLOR: 3
       run: |
-        echo -e "\033[0;31mUnsupported event type: ${{ github.event_name }}. Try on:push or on:pull_request\033[0m"
+        echo -e "\033[0;31mUnsupported event type: ${{ github.event_name }}. Try on:schedule\033[0m"
         exit 0
       shell: bash
 
@@ -71,7 +75,8 @@ runs:
       run: |
         docker run --rm \
           -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
-          -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}} \
+          -e GOMBOC_SERVER_URL=${{inputs.GOMBOC_SERVER_URL}} \
+          -e GOMBOC_CLIENT_URL=${{inputs.GOMBOC_CLIENT_URL}} \
           gombocai/cli:${{ inputs.cli-version }} \
           sh -c "gomboc ${{ inputs.effect }} on-schedule --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directory ${{ target-directory }} --iac ${{ inputs.iac }}"
 
