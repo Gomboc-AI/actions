@@ -1,12 +1,16 @@
-name: 'Gomboc.AI Terraform Remediate Action'
+name: 'Gomboc.AI On Pull Request Action'
 
-description: 'Run the Gomboc.AI service against your Terraform code'
+description: 'Secure your IaC with Gomboc.AI'
 
 inputs:
-  GOMBOC_STAGE: 
+  GOMBOC_SERVER_URL: 
+    description: 'Internal use only'
     required: false
-    default: 'PROD'
+  GOMBOC_CLIENT_URL: 
+    description: 'Internal use only'
+    required: false
   GOMBOC_DEBUG:
+    description: 'Internal use only'
     required: false
   effect:
     description: "'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
@@ -27,7 +31,7 @@ inputs:
   cli-version:
     description: "The specific CLI version you would like us to use"
     required: false
-    default: '1.0.2'
+    default: '1.0.4'
     type: string
 
 runs:
@@ -63,7 +67,7 @@ runs:
         echo "ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL" | python -c "import sys, json; print(json.load(sys.stdin)['value'])")" >> $GITHUB_OUTPUT
       shell: bash
 
-    - name: Handle pull_request event
+    - name: Handle on_pull_request event
       if: github.event_name == 'pull_request' && steps.its-gomboc.outputs.its_gomboc == 'false'
       env:
         FORCE_COLOR: 3
@@ -77,33 +81,19 @@ runs:
         fi
         docker run --rm \
           -e GOMBOC_DEBUG=${{inputs.GOMBOC_DEBUG}} \
-          -e GOMBOC_STAGE=${{inputs.GOMBOC_STAGE}} \
+          -e GOMBOC_SERVER_URL=${{inputs.GOMBOC_SERVER_URL}} \
+          -e GOMBOC_CLIENT_URL=${{inputs.GOMBOC_CLIENT_URL}} \
           gombocai/cli:${{ inputs.cli-version }} \
           sh -c "gomboc ${{inputs.effect}} on-pull-request --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --pull-request ${{ github.event.pull_request.number }} --iac ${{ inputs.iac }}" 
-
       shell: bash
 
-    - name: Handle push event
-      if: github.event_name == 'push' && steps.its-gomboc.outputs.its_gomboc == 'false'
-      env:
-        FORCE_COLOR: 3
-      run: |
-        after=${{ github.event.after }}
-        before=${{ github.event.before }}
-        target_directories=$(for i in $(git diff --name-only --diff-filter=ACMRT "$after" "$before") ; do dirname $i ; done | sort -u | xargs)
-        if [ -z "$target_directories" ]; then
-          echo -e "\033[0;31mNo changes detected\033[0m"
-          exit 0
-        fi
-        gomboc ${{inputs.effect}} on-pull-request --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directories $target_directories --iac ${{ inputs.iac }} --pull-request ${{ github.event.pull_request.number }} 
-      shell: bash
 
     - name: Handle unsupported event types
-      if: github.event_name != 'pull_request' && github.event_name != 'push' && steps.its-gomboc.outputs.its_gomboc == 'false'
+      if: github.event_name != 'pull_request' && steps.its-gomboc.outputs.its_gomboc == 'false'
       env:
         FORCE_COLOR: 3
       run: |
-        echo -e "\033[0;31mUnsupported event type: ${{ github.event_name }}. Try on:push or on:pull_request\033[0m"
+        echo -e "\033[0;31mUnsupported event type: ${{ github.event_name }}. Try on:pull_request\033[0m"
         exit 0
       shell: bash
 
