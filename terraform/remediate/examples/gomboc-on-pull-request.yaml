@@ -13,5 +13,5 @@ jobs:
     steps:
       - uses: Gomboc-AI/actions/on-pull-request@main
         with:
-          effect: submit-for-review
+          effect: audit
           iac: terraform
