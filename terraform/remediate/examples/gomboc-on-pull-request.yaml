@@ -11,4 +11,7 @@ jobs:
   gomboc-ai:
     runs-on: ubuntu-latest
     steps:
-      - uses: Gomboc-AI/actions/terraform/remediate@main
+      - uses: Gomboc-AI/actions/on-pull-request@main
+        with:
+          effect: submit-for-review
+          iac: terraform
