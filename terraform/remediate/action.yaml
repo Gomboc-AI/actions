@@ -31,12 +31,12 @@ runs:
         fi
       shell: bash
       
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@8e5e7e5ab8b370d6c329ec480221332ada57f0ab # v3.5.2
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       with:
         fetch-depth: 0
 
-    - uses: actions/setup-node@v3
+    - uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610 # v3.9.1
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       with:
         node-version: 18.17.0
