@@ -40,7 +40,7 @@ inputs:
   cli-version:
     description: "The specific CLI version you would like us to use"
     required: false
-    default: '1.0.12'
+    default: latest
     type: string
 
 runs:
