@@ -30,7 +30,8 @@ inputs:
     items:
       type: string
       enum:
-        - 'cloudformation'
+        - 'cloudformation_json'
+        - 'cloudformation_yaml'
         - 'terraform'
   recurse:
     description: "When set to true, Gomboc will check additional directories within the target-directory and try to remediate any IaC files found"
@@ -40,7 +41,7 @@ inputs:
   cli-version:
     description: "The specific CLI version you would like us to use"
     required: false
-    default: '1.1.0'
+    default: '2.0.0'
     type: string
 
 runs:
