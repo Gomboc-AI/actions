@@ -26,12 +26,13 @@ inputs:
     items:
       type: string
       enum:
-        - 'cloudformation'
+        - 'cloudformation_yaml'
+        - 'cloudformation_json'
         - 'terraform'
   cli-version:
     description: "The specific CLI version you would like us to use"
     required: false
-    default: '1.1.0'
+    default: '2.0.0'
     type: string
 
 runs:
