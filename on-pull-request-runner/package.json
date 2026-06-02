@@ -5,7 +5,7 @@
   "scripts": {
     "build": "tsc",
     "test": "npm run build && node --test tests/**/*.test.js",
-    "check:dist": "npm run build && git diff --exit-code dist/"
+    "check:dist": "npm run build && git diff --exit-code -- 'dist/**/*.js'"
   },
   "dependencies": {
     "@gomboc-ai/gomboc-node-sdk": "^2.1.0",

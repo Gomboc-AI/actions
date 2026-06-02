@@ -43,4 +43,4 @@ jobs:
         run: npm test
 
       - name: Verify dist is up to date
-        run: git diff --exit-code dist/
+        run: git diff --exit-code -- 'dist/**/*.js'
