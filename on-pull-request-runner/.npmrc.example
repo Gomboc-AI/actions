@@ -1,0 +1,6 @@
+@Gomboc-AI:registry=https://npm.pkg.github.com
+@gomboc-ai:registry=https://npm.pkg.github.com
+
+# Copy to .npmrc (gitignored) and set one of:
+//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}
+# or paste a PAT with read:packages (do not commit .npmrc)

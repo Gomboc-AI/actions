@@ -1,0 +1,21 @@
+{
+  "name": "@gomboc-ai/on-pull-request-runner",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "test": "npm run build && node --test tests/**/*.test.js",
+    "check:dist": "npm run build && git diff --exit-code dist/"
+  },
+  "dependencies": {
+    "@gomboc-ai/gomboc-node-sdk": "^2.1.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.8.0"
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

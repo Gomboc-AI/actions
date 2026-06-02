@@ -1,0 +1,243 @@
+name: 'Gomboc ORL On Pull Request Runner'
+description: 'Run ORL on pull request changed files (audit mode, Phase 1)'
+
+inputs:
+  mode:
+    description: Run mode (audit supported in Phase 1)
+    required: true
+  max-changed-files:
+    description: Maximum PR-changed paths to process
+    required: false
+    default: '50'
+  orl-channel:
+    description: Rules channel; empty = resolve from GOMBOC_ACCESS_TOKEN JWT
+    required: false
+    default: ''
+  orl-version:
+    description: ORL Docker image tag (used when orl-image is empty)
+    required: false
+    default: 'v1.3.6'
+  orl-image:
+    description: Full Docker image ref; overrides orl-version when set
+    required: false
+    default: ''
+  rules-service-url:
+    description: Gomboc Rules Service base URL
+    required: false
+    default: 'https://rules.app.gomboc.ai'
+  integrations-service-url:
+    description: Gomboc Integrations Service base URL
+    required: false
+    default: 'https://integrations.app.gomboc.ai'
+  integrations-enabled:
+    description: POST scan results to Integrations
+    required: false
+    default: 'true'
+  scan-timeout-seconds:
+    description: Timeout for each ORL remediate docker run (seconds)
+    required: false
+    default: '90'
+  rules-cache-ttl-hours:
+    description: Max age before rules cache is refreshed (hours)
+    required: false
+    default: '6'
+  remediation-branch-prefix:
+    description: Branch prefix for remediate stacked PRs (Phase 3)
+    required: false
+    default: 'gomboc/orl-remediation'
+  comment-max-per-pr:
+    description: Maximum inline review comments per PR (Phase 2)
+    required: false
+    default: '50'
+  fail-on-findings:
+    description: Fail when findings or changes are greater than zero (Phase 4)
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - name: Require pull_request event
+      shell: bash
+      run: |
+        if [ "${{ github.event_name }}" != "pull_request" ]; then
+          echo "::error::on-pull-request-runner only supports pull_request events (got: ${{ github.event_name }})"
+          exit 1
+        fi
+
+    - name: Skip when triggered by Gomboc bot
+      id: its-gomboc
+      shell: bash
+      run: |
+        its_gomboc_prod=${{ github.actor == 'gomboc-ai[bot]' }}
+        its_gomboc_beta=${{ github.actor == 'gomboc-ai-beta[bot]' }}
+        its_gomboc_local=${{ github.actor == 'gomboc-local-development[bot]' }}
+        if [[ $its_gomboc_prod == true || $its_gomboc_beta == true || $its_gomboc_local == true ]]; then
+          echo "its_gomboc=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "its_gomboc=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Skip (Gomboc bot)
+      if: steps.its-gomboc.outputs.its_gomboc == 'true'
+      shell: bash
+      run: echo "Skipping — workflow triggered by Gomboc bot."
+
+    - id: orl-image
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      shell: bash
+      run: |
+        if [ -n "${{ inputs.orl-image }}" ]; then
+          echo "ref=${{ inputs.orl-image }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "ref=gombocai/orl:${{ inputs.orl-version }}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Cache ORL Docker image
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      id: orl-docker-cache
+      uses: actions/cache@a7b3cd8e169a6e681c9e24c1ae4970e4d7b5a97d # v4
+      with:
+        path: /tmp/orl-image.tar
+        key: docker-${{ steps.orl-image.outputs.ref }}
+
+    - name: Pull ORL Docker image
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.orl-docker-cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        docker pull "${{ steps.orl-image.outputs.ref }}"
+        docker save "${{ steps.orl-image.outputs.ref }}" -o /tmp/orl-image.tar
+
+    - name: Load ORL Docker image
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.orl-docker-cache.outputs.cache-hit == 'true'
+      shell: bash
+      run: docker load -i /tmp/orl-image.tar
+
+    - uses: actions/setup-node@8e232843a6d248ba8d4e095c17bd5511b0ed277 # v4
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      with:
+        node-version: '24'
+        registry-url: https://npm.pkg.github.com
+        scope: '@gomboc-ai'
+
+    - name: Install action dependencies
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: |
+        if [ ! -f node_modules/@gomboc-ai/gomboc-node-sdk/package.json ]; then
+          if [ -f package-lock.json ]; then
+            npm ci --omit=dev
+          else
+            npm install --omit=dev
+          fi
+        fi
+      env:
+        NODE_AUTH_TOKEN: ${{ github.token }}
+
+    - name: Resolve rules channel
+      id: resolve-channel
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
+        INPUT_ORL_CHANNEL: ${{ inputs.orl-channel }}
+      run: node dist/resolve-channel.js
+
+    - name: Cache rules
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      id: rules-cache
+      uses: actions/cache@a7b3cd8e169a6e681c9e24c1ae4970e4d7b5a97d # v4
+      with:
+        path: ${{ runner.temp }}/orl-rules
+        key: orl-rules-${{ steps.orl-image.outputs.ref }}-${{ inputs.rules-service-url }}-${{ steps.resolve-channel.outputs.channel }}
+
+    - name: Pull rules
+      id: pull-rules
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
+        ORL_IMAGE: ${{ steps.orl-image.outputs.ref }}
+        RULES_SERVICE_URL: ${{ inputs.rules-service-url }}
+        ORL_CHANNEL: ${{ steps.resolve-channel.outputs.channel }}
+        ORL_RULES_DIR: ${{ runner.temp }}/orl-rules
+      run: node dist/pull-rules.js
+
+    - name: Resolve PR changed files
+      id: resolve-pr-files
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        INPUT_MODE: ${{ inputs.mode }}
+        INPUT_MAX_CHANGED_FILES: ${{ inputs.max-changed-files }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+      run: node dist/resolve-pr-files.js
+
+    - name: Discover touched workspaces
+      id: discover-workspaces
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.resolve-pr-files.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        ORL_IMAGE: ${{ steps.orl-image.outputs.ref }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+      run: node dist/discover-workspaces.js
+
+    - name: Plan evaluation batches
+      id: plan-batches
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.discover-workspaces.outcome == 'success' && steps.discover-workspaces.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+      run: node dist/plan-evaluation-batches.js
+
+    - name: Run ORL
+      id: run-orl
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.plan-batches.outcome == 'success' && steps.plan-batches.outputs.skip != 'true'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        ORL_IMAGE: ${{ steps.orl-image.outputs.ref }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+        GITHUB_ACTION_PATH: ${{ github.action_path }}
+        ORL_RULES_DIR: ${{ runner.temp }}/orl-rules
+        INPUT_SCAN_TIMEOUT_SECONDS: ${{ inputs.scan-timeout-seconds }}
+        ORL_REMEDIATE_CONCURRENCY: '3'
+      run: node dist/run-orl.js
+
+    - name: Normalize report
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: node dist/normalize-report.js
+
+    - name: Post Integrations
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
+        INTEGRATIONS_SERVICE_URL: ${{ inputs.integrations-service-url }}
+        INPUT_INTEGRATIONS_ENABLED: ${{ inputs.integrations-enabled }}
+      run: node dist/post-integrations.js
+
+    - name: Publish audit summary comment
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: node dist/publish-audit-summary.js
+
+    - name: Upload ORL artifacts
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      uses: actions/upload-artifact@26f96dfa697d77e81fd4617d9a072eb3299ea436 # v4
+      with:
+        name: gomboc-orl-report
+        path: ${{ runner.temp }}/gomboc-orl/
+        retention-days: 14
