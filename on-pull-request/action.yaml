@@ -13,26 +13,16 @@ inputs:
     description: 'Internal use only'
     required: false
   effect:
-    description: "'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
+    description: "One of 'submit-for-review' or 'audit'. 'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
     required: false
     default: 'submit-for-review'
-    enum:
-      - 'submit-for-review'
-      - 'audit'
   iac:
-    description: "A space separated list with the IaC you want us to check"
+    description: "Space-separated IaC types to check. Allowed values: cloudformation, terraform"
     required: true
-    type: array
-    items:
-      type: string
-      enum:
-        - 'cloudformation'
-        - 'terraform'
   cli-version:
     description: "The specific CLI version you would like us to use"
     required: false
     default: '1.1.0'
-    type: string
 
 runs:
   using: "composite"
