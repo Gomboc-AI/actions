@@ -2,7 +2,7 @@
  * Composite step: `orl rules pull` into `ORL_RULES_DIR` via Docker.
  */
 import fs from 'node:fs';
-import { artifactPath } from './lib/artifacts.js';
+import { artifactPath, getArtifactsRoot } from './lib/artifacts.js';
 import { currentUidGid, dockerRunOrThrow } from './lib/docker.js';
 import { requireEnv } from './lib/env.js';
 import { runMain } from './lib/runner.js';
@@ -33,6 +33,7 @@ async function main() {
         ],
     });
     console.log(`Rules pulled to ${rulesDir}`);
+    fs.mkdirSync(getArtifactsRoot(), { recursive: true });
     fs.writeFileSync(artifactPath('rules-dir.txt'), rulesDir, 'utf8');
 }
 runMain(main);
