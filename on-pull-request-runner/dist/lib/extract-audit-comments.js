@@ -234,16 +234,49 @@ export function extractAuditCommentCandidates(args) {
     }
     return candidates;
 }
-function tableCell(value) {
+function escapeHtml(text) {
+    return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+function htmlTableText(value) {
     if (!value?.trim())
         return '—';
-    return value.trim().replace(/\|/g, '\\|').replace(/\s+/g, ' ');
+    return escapeHtml(value.trim().replace(/\s+/g, ' '));
+}
+/** GitHub markdown tables wrap narrow columns; HTML row headers + code scores stay compact. */
+export function formatImpactRiskTableHtml(candidate) {
+    const severityScore = formatScoreCell(candidate.impact);
+    const riskScore = formatScoreCell(candidate.risk);
+    return [
+        '<table>',
+        '<thead>',
+        '<tr>',
+        '<th align="left"></th>',
+        '<th align="left">Score</th>',
+        '<th align="left">Description</th>',
+        '</tr>',
+        '</thead>',
+        '<tbody>',
+        '<tr>',
+        '<th scope="row" align="left">Severity</th>',
+        `<td align="left"><code>${htmlTableText(severityScore)}</code></td>`,
+        `<td align="left">${htmlTableText(candidate.impactStatement)}</td>`,
+        '</tr>',
+        '<tr>',
+        '<th scope="row" align="left">Risk</th>',
+        `<td align="left"><code>${htmlTableText(riskScore)}</code></td>`,
+        `<td align="left">${htmlTableText(candidate.riskStatement)}</td>`,
+        '</tr>',
+        '</tbody>',
+        '</table>',
+    ].join('\n');
 }
 export function formatInlineCommentBody(candidate, options = {}) {
     const lines = [AUDIT_COMMENT_MARKER, `**Gomboc ORL:** ${candidate.displayName}`, ''];
-    lines.push('| | Score | Description |', '|---|---|---|');
-    lines.push(`| Severity | ${formatScoreCell(candidate.impact)} | ${tableCell(candidate.impactStatement)} |`);
-    lines.push(`| Risk | ${formatScoreCell(candidate.risk)} | ${tableCell(candidate.riskStatement)} |`, '');
+    lines.push(formatImpactRiskTableHtml(candidate), '');
     if (candidate.description?.trim()) {
         lines.push(candidate.description.trim(), '');
     }

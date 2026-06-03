@@ -66,10 +66,15 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].impact, 'high');
     assert.equal(candidates[0].risk, 'medium');
     const body = formatInlineCommentBody(candidates[0]);
-    assert.match(body, /\| Severity \| high \| .*IAM-based permissions/);
-    assert.match(body, /\| Risk \| medium \| .*lose access/);
+    assert.match(body, /<th scope="row"[^>]*>Severity<\/th>/);
+    assert.match(body, /<code>high<\/code>/);
+    assert.match(body, /<th scope="row"[^>]*>Risk<\/th>/);
+    assert.match(body, /<code>medium<\/code>/);
+    assert.match(body, /IAM-based permissions/);
+    assert.match(body, /lose access/);
     assert.doesNotMatch(body, /\*\*Impact\*\*/);
     assert.doesNotMatch(body, /\*\*Risk\*\*/);
+    assert.doesNotMatch(body, /^\| Severity \|/m);
   });
 
   it('links rule name to portal ruleset page', () => {
