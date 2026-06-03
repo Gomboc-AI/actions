@@ -24,6 +24,29 @@ export type PostIssueCommentArgs = {
   body: string;
 };
 
+export type PullReviewComment = {
+  id: number;
+  body: string;
+  path: string;
+  line: number | null;
+};
+
+export type CreatePullReviewCommentArgs = {
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  commitId: string;
+  path: string;
+  line: number;
+  startLine?: number;
+  body: string;
+};
+
+export type IssueComment = {
+  id: number;
+  body: string;
+};
+
 /** Authenticated client using `GITHUB_TOKEN` and optional `GITHUB_API_URL`. */
 export class GitHubClient {
   constructor(
@@ -79,6 +102,83 @@ export class GitHubClient {
       'POST',
       `/repos/${owner}/${repo}/issues/${issueNumber}/comments`,
       { body }
+    );
+  }
+
+  /** Lists issue comments on a PR (issue) thread. */
+  async listIssueComments(args: {
+    owner: string;
+    repo: string;
+    issueNumber: number;
+  }): Promise<IssueComment[]> {
+    const { owner, repo, issueNumber } = args;
+    return this.request<IssueComment[]>(
+      'GET',
+      `/repos/${owner}/${repo}/issues/${issueNumber}/comments?per_page=100`
+    );
+  }
+
+  /** Updates an existing issue comment body. */
+  async updateIssueComment(args: {
+    owner: string;
+    repo: string;
+    commentId: number;
+    body: string;
+  }): Promise<void> {
+    const { owner, repo, commentId, body } = args;
+    await this.request(
+      'PATCH',
+      `/repos/${owner}/${repo}/issues/comments/${commentId}`,
+      { body }
+    );
+  }
+
+  /** Lists inline review comments on a pull request. */
+  async listPullReviewComments(args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+  }): Promise<PullReviewComment[]> {
+    const { owner, repo, pullNumber } = args;
+    return this.request<PullReviewComment[]>(
+      'GET',
+      `/repos/${owner}/${repo}/pulls/${pullNumber}/comments?per_page=100`
+    );
+  }
+
+  /** Creates an inline review comment on the PR diff. */
+  async createPullReviewComment(
+    args: CreatePullReviewCommentArgs
+  ): Promise<void> {
+    const { owner, repo, pullNumber, commitId, path, line, startLine, body } =
+      args;
+    const payload: Record<string, unknown> = {
+      body,
+      commit_id: commitId,
+      path,
+      line,
+      side: 'RIGHT',
+    };
+    if (startLine !== undefined && startLine !== line) {
+      payload.start_line = startLine;
+    }
+    await this.request(
+      'POST',
+      `/repos/${owner}/${repo}/pulls/${pullNumber}/comments`,
+      payload
+    );
+  }
+
+  /** Deletes a pull request review comment by id. */
+  async deletePullReviewComment(args: {
+    owner: string;
+    repo: string;
+    commentId: number;
+  }): Promise<void> {
+    const { owner, repo, commentId } = args;
+    await this.request(
+      'DELETE',
+      `/repos/${owner}/${repo}/pulls/comments/${commentId}`
     );
   }
 

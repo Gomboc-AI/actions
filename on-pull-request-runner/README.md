@@ -1,6 +1,6 @@
 # Gomboc ORL On Pull Request Runner
 
-Composite GitHub Action that runs [ORL](https://github.com/Gomboc-AI/orl) on **pull request** diffs: discovers touched workspaces, remediates in audit mode, posts results to Integrations, and leaves a summary PR comment.
+Composite GitHub Action that runs [ORL](https://github.com/Gomboc-AI/orl) on **pull request** diffs: discovers touched workspaces, remediates in audit mode, posts results to Integrations, and leaves inline review comments plus a summary on the PR.
 
 ## Requirements
 
@@ -39,13 +39,14 @@ jobs:
 
 See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 
-## Phase 1 scope
+## Phase 1–2 scope (audit)
 
 | Supported | Not yet |
 |-----------|---------|
 | `mode: audit` | `mode: remediate` (stacked remediation PR) |
-| Summary PR comment | Inline review comments on lines |
-| Git-derived PR file scope | `push` / `schedule` triggers |
+| Inline review comments on changed lines (severity / risk) | Comments on unchanged lines outside the PR diff |
+| Summary PR comment (updated each run) | `push` / `schedule` triggers |
+| `fail-on-findings` to block the job | — |
 
 ## How it works
 
@@ -54,7 +55,7 @@ See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 3. `git diff` PR base..head → scannable files and touch seeds
 4. `orl detect-language` per touch seed → touched workspaces
 5. Parallel `orl remediate` per workspace × language (default concurrency: 3)
-6. Merge reports → Integrations POST → summary comment → artifacts
+6. Merge reports → Integrations POST → inline + summary PR comments → artifacts
 
 ## Inputs
 
@@ -69,6 +70,21 @@ See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 | `integrations-service-url` | `https://integrations.app.gomboc.ai` | Integrations base URL |
 | `integrations-enabled` | `true` | Set `false` to skip Integrations POST |
 | `scan-timeout-seconds` | `90` | Per-batch remediate timeout |
+| `comment-max-per-pr` | `50` | Max inline review comments per PR run |
+| `fail-on-findings` | `false` | Set `true` to fail when findings or changes &gt; 0 |
+
+### Blocking on findings
+
+```yaml
+- uses: gomboc-ai/actions/on-pull-request-runner@v1
+  with:
+    mode: audit
+    fail-on-findings: true
+  env:
+    GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
+```
+
+When `fail-on-findings` is `false` (default), the job succeeds after reporting violations so you can review inline comments without blocking merges.
 
 ## Maintainers
 

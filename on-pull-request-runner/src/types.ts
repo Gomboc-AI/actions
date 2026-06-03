@@ -8,6 +8,7 @@ export type OrlReportRule = {
   findings?: number;
   fixes?: number;
   files?: Array<{ path: string }>;
+  paths_with_findings?: Record<string, unknown>;
   files_changed?: Record<string, unknown>;
   errors?: unknown[];
   metadata?: {

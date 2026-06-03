@@ -22,5 +22,6 @@ jobs:
       - uses: gomboc-ai/actions/on-pull-request-runner@v1
         with:
           mode: audit
+          # fail-on-findings: true   # uncomment to fail the job when ORL reports findings
         env:
           GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
