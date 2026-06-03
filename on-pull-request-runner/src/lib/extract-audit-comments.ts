@@ -1,8 +1,18 @@
 /**
  * Builds inline PR comment candidates from ORL batch reports and diagnostics.
+ *
+ * Primary anchor source: `spec.rules[].finding_locations` (ORL report schema).
  */
-import type { EvaluationBatch, OrlReport, OrlReportRule } from '../types.js';
+import type {
+  EvaluationBatch,
+  OrlFindingLocationRow,
+  OrlLocation,
+  OrlReport,
+  OrlReportRule,
+} from '../types.js';
 import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-report-path.js';
+import { ruleSeverityRisk } from './rule-metadata.js';
+import { resolveScannablePath } from './scannable-path.js';
 
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
 
@@ -40,30 +50,9 @@ export type ExtractAuditCommentsArgs = {
   batchReports: Array<{ batchId: string; workspacePath: string; report: OrlReport }>;
   batchDiagnostics: Array<{ batchId: string; diagnostics: DiagnosticsShape | null }>;
   prScannableFiles: Set<string>;
+  /** PR diff changed lines per scannable file (fallback when report has path but no line). */
+  diffChangedLines?: Map<string, number[]>;
 };
-
-function pickAnnotation(
-  annotations: Record<string, string> | undefined,
-  keys: string[]
-): string | undefined {
-  if (!annotations) return undefined;
-  const lower = new Map(
-    Object.entries(annotations).map(([k, v]) => [k.toLowerCase(), v])
-  );
-  for (const key of keys) {
-    const hit = lower.get(key.toLowerCase());
-    if (hit) return hit;
-  }
-  for (const [k, v] of Object.entries(annotations)) {
-    const lk = k.toLowerCase();
-    for (const key of keys) {
-      if (lk === key.toLowerCase() || lk.endsWith(`/${key.toLowerCase()}`)) {
-        return v;
-      }
-    }
-  }
-  return undefined;
-}
 
 function ruleMeta(rule: OrlReportRule): {
   displayName: string;
@@ -72,17 +61,30 @@ function ruleMeta(rule: OrlReportRule): {
   risk?: string;
 } {
   const meta = rule.metadata;
-  const annotations = meta?.annotations;
+  const { severity, risk } = ruleSeverityRisk(rule);
   return {
     displayName: meta?.display_name ?? meta?.name ?? rule.name,
     description: meta?.description,
-    severity: pickAnnotation(annotations, [
-      'severity',
-      'policy/severity',
-      'gomboc.ai/severity',
-    ]),
-    risk: pickAnnotation(annotations, ['risk', 'risk/level', 'policy/risk', 'gomboc.ai/risk']),
+    severity,
+    risk,
   };
+}
+
+function anchorFromLocation(loc: OrlLocation): {
+  line: number;
+  startLine?: number;
+  endLine?: number;
+} | null {
+  if (typeof loc.start_line !== 'number' || loc.start_line <= 0) return null;
+  return {
+    line: loc.start_line,
+    startLine: loc.start_line,
+    endLine: typeof loc.end_line === 'number' ? loc.end_line : undefined,
+  };
+}
+
+function locationFromFindingRow(row: OrlFindingLocationRow): OrlLocation | null {
+  return row.resolved_location ?? row.original_location ?? null;
 }
 
 function lineFromReportEntry(entry: unknown): {
@@ -97,7 +99,13 @@ function lineFromReportEntry(entry: unknown): {
   if (typeof entry !== 'object') return null;
 
   const o = entry as Record<string, unknown>;
-  for (const key of ['line', 'startLine', 'start_line']) {
+
+  const asLocation = o as Partial<OrlLocation>;
+  if (typeof asLocation.file_path === 'string' && typeof asLocation.start_line === 'number') {
+    return anchorFromLocation(asLocation as OrlLocation);
+  }
+
+  for (const key of ['line', 'startLine', 'start_line', 'line_number', 'lineNumber']) {
     const v = o[key];
     if (typeof v === 'number' && v > 0) {
       const end =
@@ -110,29 +118,23 @@ function lineFromReportEntry(entry: unknown): {
     }
   }
 
-  const hunks = o.hunks;
-  if (Array.isArray(hunks)) {
-    for (const h of hunks) {
-      if (h && typeof h === 'object') {
-        const start = (h as { startLine?: number }).startLine;
-        if (typeof start === 'number' && start > 0) {
-          const end = (h as { endLine?: number }).endLine;
-          return { line: start, startLine: start, endLine: end };
-        }
-      }
+  for (const nestedKey of [
+    'resource_changes',
+    'resource_change',
+    'output_changes',
+    'changes',
+    'findings',
+  ]) {
+    if (nestedKey in o) {
+      const nested = lineFromReportEntry(o[nestedKey]);
+      if (nested) return nested;
     }
   }
 
-  const resources = o.resources;
-  if (Array.isArray(resources)) {
-    for (const r of resources) {
-      if (r && typeof r === 'object') {
-        const start = (r as { startLine?: number }).startLine;
-        if (typeof start === 'number' && start > 0) {
-          const end = (r as { endLine?: number }).endLine;
-          return { line: start, startLine: start, endLine: end };
-        }
-      }
+  if (Array.isArray(entry)) {
+    for (const item of entry) {
+      const nested = lineFromReportEntry(item);
+      if (nested) return nested;
     }
   }
 
@@ -193,11 +195,104 @@ function diagnosticsForBatch(
   return batchDiagnostics.find((b) => b.batchId === batchId)?.diagnostics ?? null;
 }
 
+function firstDiffLine(
+  diffChangedLines: Map<string, number[]> | undefined,
+  scannablePath: string
+): number | null {
+  const lines = diffChangedLines?.get(scannablePath);
+  if (!lines?.length) return null;
+  return lines[0];
+}
+
+type AnchorAttempt = {
+  scannablePath: string;
+  anchor: { line: number; startLine?: number; endLine?: number };
+  dedupeKey: string;
+};
+
+function tryFindingLocationRows(args: {
+  rule: OrlReportRule;
+  workspacePath: string;
+  prScannableFiles: Set<string>;
+}): AnchorAttempt[] {
+  const { rule, workspacePath, prScannableFiles } = args;
+  const out: AnchorAttempt[] = [];
+
+  for (const row of rule.finding_locations ?? []) {
+    const loc = locationFromFindingRow(row);
+    if (!loc?.file_path) continue;
+
+    const repoPath = reportPathToRepoPath({
+      reportPath: loc.file_path,
+      workspacePath,
+    });
+    const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+    if (!scannablePath) continue;
+
+    const anchor = anchorFromLocation(loc);
+    if (!anchor) continue;
+
+    out.push({
+      scannablePath,
+      anchor,
+      dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}:${row.id}`,
+    });
+  }
+
+  return out;
+}
+
+function tryLegacyPaths(args: {
+  rule: OrlReportRule;
+  workspacePath: string;
+  diagnostics: DiagnosticsShape | null;
+  prScannableFiles: Set<string>;
+  diffChangedLines?: Map<string, number[]>;
+}): AnchorAttempt[] {
+  const { rule, workspacePath, diagnostics, prScannableFiles, diffChangedLines } = args;
+  const out: AnchorAttempt[] = [];
+  const pathEntries = pathsFromRule(rule);
+
+  if (pathEntries.length === 0 && (rule.findings ?? 0) > 0) {
+    for (const dr of diagnostics?.rules ?? []) {
+      if (dr.ruleName && dr.ruleName !== rule.name) continue;
+      for (const file of dr.files ?? []) {
+        if (!file.path) continue;
+        pathEntries.push({ path: file.path, entry: file });
+      }
+    }
+  }
+
+  for (const { path, entry } of pathEntries) {
+    const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
+    const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+    if (!scannablePath) continue;
+
+    let anchor =
+      lineFromReportEntry(entry) ??
+      lineFromDiagnostics({ diagnostics, ruleName: rule.name, repoPath: scannablePath });
+
+    if (!anchor) {
+      const diffLine = firstDiffLine(diffChangedLines, scannablePath);
+      if (diffLine) anchor = { line: diffLine, startLine: diffLine };
+    }
+    if (!anchor) continue;
+
+    out.push({
+      scannablePath,
+      anchor,
+      dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}`,
+    });
+  }
+
+  return out;
+}
+
 /** Collects deduped inline comment anchors limited to PR-scannable paths. */
 export function extractAuditCommentCandidates(
   args: ExtractAuditCommentsArgs
 ): AuditCommentCandidate[] {
-  const { batchReports, batchDiagnostics, prScannableFiles } = args;
+  const { batchReports, batchDiagnostics, prScannableFiles, diffChangedLines } = args;
   const seen = new Set<string>();
   const candidates: AuditCommentCandidate[] = [];
 
@@ -205,46 +300,37 @@ export function extractAuditCommentCandidates(
     const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
 
     for (const rule of report.spec?.rules ?? []) {
-      if ((rule.findings ?? 0) <= 0 && pathsFromRule(rule).length === 0) continue;
-
-      const meta = ruleMeta(rule);
-      const pathEntries = pathsFromRule(rule);
-
-      if (pathEntries.length === 0 && (rule.findings ?? 0) > 0) {
-        for (const dr of diagnostics?.rules ?? []) {
-          if (dr.ruleName && dr.ruleName !== rule.name) continue;
-          for (const file of dr.files ?? []) {
-            if (!file.path) continue;
-            pathEntries.push({ path: file.path, entry: file });
-          }
-        }
+      if ((rule.findings ?? 0) <= 0 && !(rule.finding_locations?.length ?? 0)) {
+        if (pathsFromRule(rule).length === 0) continue;
       }
 
-      for (const { path, entry } of pathEntries) {
-        const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
-        if (!prScannableFiles.has(repoPath)) continue;
+      const meta = ruleMeta(rule);
+      const attempts = [
+        ...tryFindingLocationRows({ rule, workspacePath, prScannableFiles }),
+        ...tryLegacyPaths({
+          rule,
+          workspacePath,
+          diagnostics,
+          prScannableFiles,
+          diffChangedLines,
+        }),
+      ];
 
-        let anchor =
-          lineFromReportEntry(entry) ??
-          lineFromDiagnostics({ diagnostics, ruleName: rule.name, repoPath });
-
-        if (!anchor) continue;
-
-        const dedupeKey = `${rule.name}:${repoPath}:${anchor.line}`;
-        if (seen.has(dedupeKey)) continue;
-        seen.add(dedupeKey);
+      for (const attempt of attempts) {
+        if (seen.has(attempt.dedupeKey)) continue;
+        seen.add(attempt.dedupeKey);
 
         candidates.push({
-          dedupeKey,
+          dedupeKey: attempt.dedupeKey,
           ruleName: rule.name,
           displayName: meta.displayName,
           description: meta.description,
           severity: meta.severity,
           risk: meta.risk,
-          filePath: repoPath,
-          line: anchor.line,
-          startLine: anchor.startLine,
-          endLine: anchor.endLine,
+          filePath: attempt.scannablePath,
+          line: attempt.anchor.line,
+          startLine: attempt.anchor.startLine,
+          endLine: attempt.anchor.endLine,
         });
       }
     }
@@ -256,12 +342,9 @@ export function extractAuditCommentCandidates(
 export function formatInlineCommentBody(candidate: AuditCommentCandidate): string {
   const lines = [AUDIT_COMMENT_MARKER, `**Gomboc ORL:** ${candidate.displayName}`, ''];
 
-  const metaRows: string[] = [];
-  if (candidate.severity) metaRows.push(`| Severity | ${candidate.severity} |`);
-  if (candidate.risk) metaRows.push(`| Risk | ${candidate.risk} |`);
-  if (metaRows.length) {
-    lines.push('| | |', '|---|---|', ...metaRows, '');
-  }
+  lines.push('| | |', '|---|---|');
+  lines.push(`| Severity | ${candidate.severity?.trim() || '—'} |`);
+  lines.push(`| Risk | ${candidate.risk?.trim() || '—'} |`, '');
 
   if (candidate.description) {
     lines.push(candidate.description.trim(), '');

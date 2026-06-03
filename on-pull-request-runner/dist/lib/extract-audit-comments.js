@@ -1,37 +1,28 @@
 import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-report-path.js';
+import { ruleSeverityRisk } from './rule-metadata.js';
+import { resolveScannablePath } from './scannable-path.js';
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
-function pickAnnotation(annotations, keys) {
-    if (!annotations)
-        return undefined;
-    const lower = new Map(Object.entries(annotations).map(([k, v]) => [k.toLowerCase(), v]));
-    for (const key of keys) {
-        const hit = lower.get(key.toLowerCase());
-        if (hit)
-            return hit;
-    }
-    for (const [k, v] of Object.entries(annotations)) {
-        const lk = k.toLowerCase();
-        for (const key of keys) {
-            if (lk === key.toLowerCase() || lk.endsWith(`/${key.toLowerCase()}`)) {
-                return v;
-            }
-        }
-    }
-    return undefined;
-}
 function ruleMeta(rule) {
     const meta = rule.metadata;
-    const annotations = meta?.annotations;
+    const { severity, risk } = ruleSeverityRisk(rule);
     return {
         displayName: meta?.display_name ?? meta?.name ?? rule.name,
         description: meta?.description,
-        severity: pickAnnotation(annotations, [
-            'severity',
-            'policy/severity',
-            'gomboc.ai/severity',
-        ]),
-        risk: pickAnnotation(annotations, ['risk', 'risk/level', 'policy/risk', 'gomboc.ai/risk']),
+        severity,
+        risk,
     };
+}
+function anchorFromLocation(loc) {
+    if (typeof loc.start_line !== 'number' || loc.start_line <= 0)
+        return null;
+    return {
+        line: loc.start_line,
+        startLine: loc.start_line,
+        endLine: typeof loc.end_line === 'number' ? loc.end_line : undefined,
+    };
+}
+function locationFromFindingRow(row) {
+    return row.resolved_location ?? row.original_location ?? null;
 }
 function lineFromReportEntry(entry) {
     if (entry == null)
@@ -42,7 +33,11 @@ function lineFromReportEntry(entry) {
     if (typeof entry !== 'object')
         return null;
     const o = entry;
-    for (const key of ['line', 'startLine', 'start_line']) {
+    const asLocation = o;
+    if (typeof asLocation.file_path === 'string' && typeof asLocation.start_line === 'number') {
+        return anchorFromLocation(asLocation);
+    }
+    for (const key of ['line', 'startLine', 'start_line', 'line_number', 'lineNumber']) {
         const v = o[key];
         if (typeof v === 'number' && v > 0) {
             const end = typeof o.endLine === 'number'
@@ -53,28 +48,24 @@ function lineFromReportEntry(entry) {
             return { line: v, startLine: v, endLine: end };
         }
     }
-    const hunks = o.hunks;
-    if (Array.isArray(hunks)) {
-        for (const h of hunks) {
-            if (h && typeof h === 'object') {
-                const start = h.startLine;
-                if (typeof start === 'number' && start > 0) {
-                    const end = h.endLine;
-                    return { line: start, startLine: start, endLine: end };
-                }
-            }
+    for (const nestedKey of [
+        'resource_changes',
+        'resource_change',
+        'output_changes',
+        'changes',
+        'findings',
+    ]) {
+        if (nestedKey in o) {
+            const nested = lineFromReportEntry(o[nestedKey]);
+            if (nested)
+                return nested;
         }
     }
-    const resources = o.resources;
-    if (Array.isArray(resources)) {
-        for (const r of resources) {
-            if (r && typeof r === 'object') {
-                const start = r.startLine;
-                if (typeof start === 'number' && start > 0) {
-                    const end = r.endLine;
-                    return { line: start, startLine: start, endLine: end };
-                }
-            }
+    if (Array.isArray(entry)) {
+        for (const item of entry) {
+            const nested = lineFromReportEntry(item);
+            if (nested)
+                return nested;
         }
     }
     return null;
@@ -126,52 +117,112 @@ function pathsFromRule(rule) {
 function diagnosticsForBatch(batchDiagnostics, batchId) {
     return batchDiagnostics.find((b) => b.batchId === batchId)?.diagnostics ?? null;
 }
+function firstDiffLine(diffChangedLines, scannablePath) {
+    const lines = diffChangedLines?.get(scannablePath);
+    if (!lines?.length)
+        return null;
+    return lines[0];
+}
+function tryFindingLocationRows(args) {
+    const { rule, workspacePath, prScannableFiles } = args;
+    const out = [];
+    for (const row of rule.finding_locations ?? []) {
+        const loc = locationFromFindingRow(row);
+        if (!loc?.file_path)
+            continue;
+        const repoPath = reportPathToRepoPath({
+            reportPath: loc.file_path,
+            workspacePath,
+        });
+        const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+        if (!scannablePath)
+            continue;
+        const anchor = anchorFromLocation(loc);
+        if (!anchor)
+            continue;
+        out.push({
+            scannablePath,
+            anchor,
+            dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}:${row.id}`,
+        });
+    }
+    return out;
+}
+function tryLegacyPaths(args) {
+    const { rule, workspacePath, diagnostics, prScannableFiles, diffChangedLines } = args;
+    const out = [];
+    const pathEntries = pathsFromRule(rule);
+    if (pathEntries.length === 0 && (rule.findings ?? 0) > 0) {
+        for (const dr of diagnostics?.rules ?? []) {
+            if (dr.ruleName && dr.ruleName !== rule.name)
+                continue;
+            for (const file of dr.files ?? []) {
+                if (!file.path)
+                    continue;
+                pathEntries.push({ path: file.path, entry: file });
+            }
+        }
+    }
+    for (const { path, entry } of pathEntries) {
+        const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
+        const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+        if (!scannablePath)
+            continue;
+        let anchor = lineFromReportEntry(entry) ??
+            lineFromDiagnostics({ diagnostics, ruleName: rule.name, repoPath: scannablePath });
+        if (!anchor) {
+            const diffLine = firstDiffLine(diffChangedLines, scannablePath);
+            if (diffLine)
+                anchor = { line: diffLine, startLine: diffLine };
+        }
+        if (!anchor)
+            continue;
+        out.push({
+            scannablePath,
+            anchor,
+            dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}`,
+        });
+    }
+    return out;
+}
 /** Collects deduped inline comment anchors limited to PR-scannable paths. */
 export function extractAuditCommentCandidates(args) {
-    const { batchReports, batchDiagnostics, prScannableFiles } = args;
+    const { batchReports, batchDiagnostics, prScannableFiles, diffChangedLines } = args;
     const seen = new Set();
     const candidates = [];
     for (const { batchId, workspacePath, report } of batchReports) {
         const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
         for (const rule of report.spec?.rules ?? []) {
-            if ((rule.findings ?? 0) <= 0 && pathsFromRule(rule).length === 0)
-                continue;
-            const meta = ruleMeta(rule);
-            const pathEntries = pathsFromRule(rule);
-            if (pathEntries.length === 0 && (rule.findings ?? 0) > 0) {
-                for (const dr of diagnostics?.rules ?? []) {
-                    if (dr.ruleName && dr.ruleName !== rule.name)
-                        continue;
-                    for (const file of dr.files ?? []) {
-                        if (!file.path)
-                            continue;
-                        pathEntries.push({ path: file.path, entry: file });
-                    }
-                }
+            if ((rule.findings ?? 0) <= 0 && !(rule.finding_locations?.length ?? 0)) {
+                if (pathsFromRule(rule).length === 0)
+                    continue;
             }
-            for (const { path, entry } of pathEntries) {
-                const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
-                if (!prScannableFiles.has(repoPath))
+            const meta = ruleMeta(rule);
+            const attempts = [
+                ...tryFindingLocationRows({ rule, workspacePath, prScannableFiles }),
+                ...tryLegacyPaths({
+                    rule,
+                    workspacePath,
+                    diagnostics,
+                    prScannableFiles,
+                    diffChangedLines,
+                }),
+            ];
+            for (const attempt of attempts) {
+                if (seen.has(attempt.dedupeKey))
                     continue;
-                let anchor = lineFromReportEntry(entry) ??
-                    lineFromDiagnostics({ diagnostics, ruleName: rule.name, repoPath });
-                if (!anchor)
-                    continue;
-                const dedupeKey = `${rule.name}:${repoPath}:${anchor.line}`;
-                if (seen.has(dedupeKey))
-                    continue;
-                seen.add(dedupeKey);
+                seen.add(attempt.dedupeKey);
                 candidates.push({
-                    dedupeKey,
+                    dedupeKey: attempt.dedupeKey,
                     ruleName: rule.name,
                     displayName: meta.displayName,
                     description: meta.description,
                     severity: meta.severity,
                     risk: meta.risk,
-                    filePath: repoPath,
-                    line: anchor.line,
-                    startLine: anchor.startLine,
-                    endLine: anchor.endLine,
+                    filePath: attempt.scannablePath,
+                    line: attempt.anchor.line,
+                    startLine: attempt.anchor.startLine,
+                    endLine: attempt.anchor.endLine,
                 });
             }
         }
@@ -180,14 +231,9 @@ export function extractAuditCommentCandidates(args) {
 }
 export function formatInlineCommentBody(candidate) {
     const lines = [AUDIT_COMMENT_MARKER, `**Gomboc ORL:** ${candidate.displayName}`, ''];
-    const metaRows = [];
-    if (candidate.severity)
-        metaRows.push(`| Severity | ${candidate.severity} |`);
-    if (candidate.risk)
-        metaRows.push(`| Risk | ${candidate.risk} |`);
-    if (metaRows.length) {
-        lines.push('| | |', '|---|---|', ...metaRows, '');
-    }
+    lines.push('| | |', '|---|---|');
+    lines.push(`| Severity | ${candidate.severity?.trim() || '—'} |`);
+    lines.push(`| Risk | ${candidate.risk?.trim() || '—'} |`, '');
     if (candidate.description) {
         lines.push(candidate.description.trim(), '');
     }

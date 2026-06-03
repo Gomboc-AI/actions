@@ -6,16 +6,67 @@ import {
 } from '../dist/lib/extract-audit-comments.js';
 
 describe('extract-audit-comments', () => {
-  it('anchors findings from files_changed line on PR-scannable paths', () => {
+  it('anchors findings from finding_locations (ORL report schema)', () => {
     const candidates = extractAuditCommentCandidates({
-      batches: [
+      batches: [],
+      batchReports: [
         {
           batchId: 'batch-0',
           workspacePath: '.',
-          orlLanguage: 'terraform',
-          files: ['main.tf'],
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 1,
+              fixes: 1,
+              changes: 1,
+              rules: [
+                {
+                  name: 'orl-rule:uniform-bucket-level-access',
+                  metadata: {
+                    name: 'orl-rule:uniform-bucket-level-access',
+                    display_name: 'Ensure uniform bucket-level access',
+                    annotations: {
+                      'gomboc-ai/risk/score': 'Medium',
+                      'gomboc-ai/severity/score': 'High',
+                    },
+                  },
+                  findings: 1,
+                  finding_locations: [
+                    {
+                      id: 'finding-1',
+                      resolved_location: {
+                        id: 'loc-1',
+                        file_path: 'main.tf',
+                        start_line: 12,
+                        start_column: 0,
+                        end_line: 14,
+                      },
+                    },
+                  ],
+                },
+              ],
+              errors: [],
+            },
+          },
         },
       ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+    });
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].filePath, 'main.tf');
+    assert.equal(candidates[0].line, 12);
+    assert.equal(candidates[0].endLine, 14);
+    assert.equal(candidates[0].severity, 'High');
+    assert.equal(candidates[0].risk, 'Medium');
+    assert.match(formatInlineCommentBody(candidates[0]), /Medium/);
+  });
+
+  it('anchors findings from files_changed line on PR-scannable paths', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
       batchReports: [
         {
           batchId: 'batch-0',
@@ -49,11 +100,7 @@ describe('extract-audit-comments', () => {
     });
 
     assert.equal(candidates.length, 1);
-    assert.equal(candidates[0].filePath, 'main.tf');
     assert.equal(candidates[0].line, 12);
-    assert.equal(candidates[0].severity, 'High');
-    assert.equal(candidates[0].risk, 'Medium');
-    assert.match(formatInlineCommentBody(candidates[0]), /High/);
   });
 
   it('skips files outside PR scannable set', () => {
@@ -75,7 +122,17 @@ describe('extract-audit-comments', () => {
                   name: 'orl-rule:test',
                   metadata: { name: 'orl-rule:test' },
                   findings: 1,
-                  files_changed: { 'vpc.tf': { startLine: 3 } },
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      original_location: {
+                        id: 'l1',
+                        file_path: 'vpc.tf',
+                        start_line: 3,
+                        start_column: 0,
+                      },
+                    },
+                  ],
                 },
               ],
               errors: [],
@@ -109,7 +166,17 @@ describe('extract-audit-comments', () => {
                   name: 'orl-rule:test',
                   metadata: { name: 'orl-rule:test' },
                   findings: 1,
-                  files_changed: { 'main.tf': { line: 5 } },
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      original_location: {
+                        id: 'l1',
+                        file_path: 'main.tf',
+                        start_line: 5,
+                        start_column: 0,
+                      },
+                    },
+                  ],
                 },
               ],
               errors: [],
@@ -124,7 +191,7 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].filePath, 'infra/main.tf');
   });
 
-  it('falls back to diagnostics when report has no line', () => {
+  it('falls back to git diff lines when report path has no line', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
       batchReports: [
@@ -151,28 +218,11 @@ describe('extract-audit-comments', () => {
           },
         },
       ],
-      batchDiagnostics: [
-        {
-          batchId: 'batch-0',
-          diagnostics: {
-            version: 1,
-            rules: [
-              {
-                ruleName: 'orl-rule:test',
-                files: [
-                  {
-                    path: 'main.tf',
-                    hunks: [{ startLine: 8, lineCount: 2 }],
-                  },
-                ],
-              },
-            ],
-          },
-        },
-      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
       prScannableFiles: new Set(['main.tf']),
+      diffChangedLines: new Map([['main.tf', [7, 8, 9]]]),
     });
 
-    assert.equal(candidates[0].line, 8);
+    assert.equal(candidates[0].line, 7);
   });
 });

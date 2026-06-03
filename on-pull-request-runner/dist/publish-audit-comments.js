@@ -5,7 +5,9 @@ import fs from 'node:fs';
 import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
 import { AUDIT_COMMENT_MARKER, extractAuditCommentCandidates, formatInlineCommentBody, } from './lib/extract-audit-comments.js';
-import { envBool, envInt } from './lib/env.js';
+import { envBool, envInt, requireEnv } from './lib/env.js';
+import { formatSeverityRiskCell, ruleSeverityRisk, } from './lib/rule-metadata.js';
+import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { runMain } from './lib/runner.js';
@@ -50,8 +52,30 @@ function collectRulesWithFindings(batchReports) {
     }
     return rules;
 }
+function workflowRunUrl() {
+    const server = process.env.GITHUB_SERVER_URL;
+    const repository = process.env.GITHUB_REPOSITORY;
+    const runId = process.env.GITHUB_RUN_ID;
+    if (!server || !repository || !runId)
+        return null;
+    return `${server}/${repository}/actions/runs/${runId}`;
+}
+function buildDiffChangedLinesMap(args) {
+    const map = new Map();
+    for (const file of args.scannable) {
+        const lines = gitDiffChangedLines({
+            baseSha: args.baseSha,
+            headSha: args.headSha,
+            cwd: args.cwd,
+            filePath: file,
+        });
+        if (lines.length)
+            map.set(file, lines);
+    }
+    return map;
+}
 function formatSummaryBody(args) {
-    const { findings, fixes, changes, posted, skipped, unanchored, rules } = args;
+    const { findings, fixes, changes, posted, skipped, unanchored, rules, workflowUrl } = args;
     const lines = [
         AUDIT_COMMENT_MARKER,
         '## Gomboc ORL audit summary',
@@ -64,22 +88,28 @@ function formatSummaryBody(args) {
         '',
         `Posted **${posted}** inline comment(s) on this PR.`,
     ];
-    if (skipped > 0 || unanchored > 0) {
-        lines.push('', `${skipped + unanchored} finding(s) could not be placed on the PR diff (unchanged lines or outside the changed file set).`);
+    if (unanchored > 0) {
+        lines.push('', `${unanchored} finding(s) had no resolvable line location in the ORL report.`);
+    }
+    if (skipped > 0) {
+        lines.push('', `${skipped} inline comment(s) could not be posted on the PR diff (line outside diff hunk or GitHub rejected the anchor).`);
     }
     if (rules.length) {
         lines.push('', '### Rules with findings', '');
         lines.push('| Rule | Severity | Risk | Findings |');
         lines.push('|------|----------|------|----------|');
         for (const rule of rules) {
-            const ann = rule.metadata?.annotations ?? {};
-            const severity = ann.severity ?? ann['policy/severity'] ?? ann['gomboc.ai/severity'] ?? '—';
-            const risk = ann.risk ?? ann['policy/risk'] ?? ann['gomboc.ai/risk'] ?? '—';
+            const { severity, risk } = ruleSeverityRisk(rule);
             const name = rule.metadata?.display_name ?? rule.name;
-            lines.push(`| ${name} | ${severity} | ${risk} | ${rule.findings ?? 0} |`);
+            lines.push(`| ${name} | ${formatSeverityRiskCell(severity)} | ${formatSeverityRiskCell(risk)} | ${rule.findings ?? 0} |`);
         }
     }
-    lines.push('', 'Full reports are in workflow artifacts (`gomboc-orl-report`).');
+    if (workflowUrl) {
+        lines.push('', `Full reports are in the [\`gomboc-orl-report\`](${workflowUrl}) workflow artifact.`);
+    }
+    else {
+        lines.push('', 'Full reports are in workflow artifacts (`gomboc-orl-report`).');
+    }
     return lines.join('\n');
 }
 async function removePriorAuditComments(args) {
@@ -152,6 +182,13 @@ async function main() {
     const normalized = loadJson(artifactPath('normalized-report.json'));
     const { files: scannable } = loadJson(artifactPath('pr-scannable-files.json'));
     const prScannableFiles = new Set(scannable);
+    const workspace = requireEnv('GITHUB_WORKSPACE');
+    const diffChangedLines = buildDiffChangedLinesMap({
+        scannable,
+        baseSha: pr.baseSha,
+        headSha: pr.headSha,
+        cwd: workspace,
+    });
     const batchReports = loadBatchReports();
     const batchDiagnostics = loadBatchDiagnostics();
     const { batches } = loadJson(artifactPath('evaluation-batches.json'));
@@ -160,6 +197,7 @@ async function main() {
         batchReports,
         batchDiagnostics,
         prScannableFiles,
+        diffChangedLines,
     });
     const maxComments = envInt('INPUT_COMMENT_MAX_PER_PR', 50);
     const totalFindings = normalized.findings ?? 0;
@@ -187,6 +225,7 @@ async function main() {
         skipped,
         unanchored,
         rules: collectRulesWithFindings(batchReports),
+        workflowUrl: workflowRunUrl(),
     });
     await upsertSummaryComment({
         github,

@@ -2,6 +2,24 @@
  * Shared types for ORL reports, workspace discovery, and evaluation batches.
  */
 
+/** File/line anchor in an ORL report (`Location` in report schema). */
+export type OrlLocation = {
+  id?: string;
+  file_path: string;
+  start_line: number;
+  end_line?: number;
+  start_column?: number;
+  end_column?: number;
+};
+
+/** One finding row with original and optional resolved location. */
+export type OrlFindingLocationRow = {
+  id: string;
+  original_location?: OrlLocation;
+  resolved_location?: OrlLocation;
+  resolution_status?: string;
+};
+
 /** One rule entry inside `report.yaml` `spec.rules`. */
 export type OrlReportRule = {
   name: string;
@@ -10,6 +28,7 @@ export type OrlReportRule = {
   files?: Array<{ path: string }>;
   paths_with_findings?: Record<string, unknown>;
   files_changed?: Record<string, unknown>;
+  finding_locations?: OrlFindingLocationRow[];
   errors?: unknown[];
   metadata?: {
     name?: string;
