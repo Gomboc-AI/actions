@@ -78,7 +78,7 @@ function formatSummaryBody(args) {
     const { findings, fixes, changes, posted, skipped, unanchored, rules, workflowUrl } = args;
     const lines = [
         AUDIT_COMMENT_MARKER,
-        '## Gomboc ORL audit summary',
+        '## Gomboc Assessment Results',
         '',
         '| Metric | Count |',
         '|--------|-------|',
@@ -89,7 +89,7 @@ function formatSummaryBody(args) {
         `Posted **${posted}** inline comment(s) on this PR.`,
     ];
     if (unanchored > 0) {
-        lines.push('', `${unanchored} finding(s) had no resolvable line location in the ORL report.`);
+        lines.push('', `${unanchored} finding(s) had no resolvable line location in the assessment report.`);
     }
     if (skipped > 0) {
         lines.push('', `${skipped} inline comment(s) could not be posted on the PR diff (line outside diff hunk or GitHub rejected the anchor).`);

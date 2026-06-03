@@ -275,7 +275,7 @@ export function formatImpactRiskTableHtml(candidate) {
     ].join('\n');
 }
 export function formatInlineCommentBody(candidate, options = {}) {
-    const lines = [AUDIT_COMMENT_MARKER, `**Gomboc ORL:** ${candidate.displayName}`, ''];
+    const lines = [AUDIT_COMMENT_MARKER, `**${candidate.displayName}**`, ''];
     lines.push(formatImpactRiskTableHtml(candidate), '');
     if (candidate.description?.trim()) {
         lines.push(candidate.description.trim(), '');

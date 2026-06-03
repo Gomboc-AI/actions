@@ -123,7 +123,7 @@ function formatSummaryBody(args: {
     args;
   const lines = [
     AUDIT_COMMENT_MARKER,
-    '## Gomboc ORL audit summary',
+    '## Gomboc Assessment Results',
     '',
     '| Metric | Count |',
     '|--------|-------|',
@@ -137,7 +137,7 @@ function formatSummaryBody(args: {
   if (unanchored > 0) {
     lines.push(
       '',
-      `${unanchored} finding(s) had no resolvable line location in the ORL report.`
+      `${unanchored} finding(s) had no resolvable line location in the assessment report.`
     );
   }
   if (skipped > 0) {

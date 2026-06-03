@@ -399,7 +399,7 @@ export function formatInlineCommentBody(
   candidate: AuditCommentCandidate,
   options: FormatInlineCommentOptions = {}
 ): string {
-  const lines = [AUDIT_COMMENT_MARKER, `**Gomboc ORL:** ${candidate.displayName}`, ''];
+  const lines = [AUDIT_COMMENT_MARKER, `**${candidate.displayName}**`, ''];
 
   lines.push(formatImpactRiskTableHtml(candidate), '');
 

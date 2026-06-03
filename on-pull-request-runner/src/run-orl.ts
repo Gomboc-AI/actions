@@ -158,7 +158,7 @@ async function main(): Promise<void> {
     JSON.stringify(outcome.mergedDiagnostics, null, 2)
   );
 
-  let summary = '## Gomboc ORL results\n\n';
+  let summary = '## Gomboc Assessment Results\n\n';
   summary += `| Workspace | Language | Findings | Fixes | Changes |\n`;
   summary += `|-----------|----------|----------|-------|----------|\n`;
   for (const r of results) {
