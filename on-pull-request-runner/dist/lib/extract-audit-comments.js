@@ -234,49 +234,28 @@ export function extractAuditCommentCandidates(args) {
     }
     return candidates;
 }
-function escapeHtml(text) {
-    return text
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
+function formatScoreLabel(score) {
+    const cell = formatScoreCell(score);
+    return cell === '—' ? cell : cell.toUpperCase();
 }
-function htmlTableText(value) {
-    if (!value?.trim())
-        return '—';
-    return escapeHtml(value.trim().replace(/\s+/g, ' '));
-}
-/** GitHub markdown tables wrap narrow columns; HTML row headers + code scores stay compact. */
-export function formatImpactRiskTableHtml(candidate) {
-    const severityScore = formatScoreCell(candidate.impact);
-    const riskScore = formatScoreCell(candidate.risk);
-    return [
-        '<table>',
-        '<thead>',
-        '<tr>',
-        '<th align="left"></th>',
-        '<th align="left">Score</th>',
-        '<th align="left">Description</th>',
-        '</tr>',
-        '</thead>',
-        '<tbody>',
-        '<tr>',
-        '<th scope="row" align="left">Severity</th>',
-        `<td align="left"><code>${htmlTableText(severityScore)}</code></td>`,
-        `<td align="left">${htmlTableText(candidate.impactStatement)}</td>`,
-        '</tr>',
-        '<tr>',
-        '<th scope="row" align="left">Risk</th>',
-        `<td align="left"><code>${htmlTableText(riskScore)}</code></td>`,
-        `<td align="left">${htmlTableText(candidate.riskStatement)}</td>`,
-        '</tr>',
-        '</tbody>',
-        '</table>',
-    ].join('\n');
+function formatSeverityRiskSection(args) {
+    const lines = [`## ${args.label}: \`${formatScoreLabel(args.score)}\``, ''];
+    if (args.statement?.trim()) {
+        lines.push(args.statement.trim(), '');
+    }
+    return lines;
 }
 export function formatInlineCommentBody(candidate, options = {}) {
     const lines = [AUDIT_COMMENT_MARKER, `**${candidate.displayName}**`, ''];
-    lines.push(formatImpactRiskTableHtml(candidate), '');
+    lines.push(...formatSeverityRiskSection({
+        label: 'Severity',
+        score: candidate.impact,
+        statement: candidate.impactStatement,
+    }), ...formatSeverityRiskSection({
+        label: 'Risk',
+        score: candidate.risk,
+        statement: candidate.riskStatement,
+    }));
     if (candidate.description?.trim()) {
         lines.push(candidate.description.trim(), '');
     }

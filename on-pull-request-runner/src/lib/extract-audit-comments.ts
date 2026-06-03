@@ -352,47 +352,21 @@ export type FormatInlineCommentOptions = {
   portalServiceUrl?: string;
 };
 
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function formatScoreLabel(score: string | undefined): string {
+  const cell = formatScoreCell(score);
+  return cell === '—' ? cell : cell.toUpperCase();
 }
 
-function htmlTableText(value: string | undefined): string {
-  if (!value?.trim()) return '—';
-  return escapeHtml(value.trim().replace(/\s+/g, ' '));
-}
-
-/** GitHub markdown tables wrap narrow columns; HTML row headers + code scores stay compact. */
-export function formatImpactRiskTableHtml(candidate: AuditCommentCandidate): string {
-  const severityScore = formatScoreCell(candidate.impact);
-  const riskScore = formatScoreCell(candidate.risk);
-
-  return [
-    '<table>',
-    '<thead>',
-    '<tr>',
-    '<th align="left"></th>',
-    '<th align="left">Score</th>',
-    '<th align="left">Description</th>',
-    '</tr>',
-    '</thead>',
-    '<tbody>',
-    '<tr>',
-    '<th scope="row" align="left">Severity</th>',
-    `<td align="left"><code>${htmlTableText(severityScore)}</code></td>`,
-    `<td align="left">${htmlTableText(candidate.impactStatement)}</td>`,
-    '</tr>',
-    '<tr>',
-    '<th scope="row" align="left">Risk</th>',
-    `<td align="left"><code>${htmlTableText(riskScore)}</code></td>`,
-    `<td align="left">${htmlTableText(candidate.riskStatement)}</td>`,
-    '</tr>',
-    '</tbody>',
-    '</table>',
-  ].join('\n');
+function formatSeverityRiskSection(args: {
+  label: 'Severity' | 'Risk';
+  score: string | undefined;
+  statement: string | undefined;
+}): string[] {
+  const lines = [`## ${args.label}: \`${formatScoreLabel(args.score)}\``, ''];
+  if (args.statement?.trim()) {
+    lines.push(args.statement.trim(), '');
+  }
+  return lines;
 }
 
 export function formatInlineCommentBody(
@@ -401,7 +375,18 @@ export function formatInlineCommentBody(
 ): string {
   const lines = [AUDIT_COMMENT_MARKER, `**${candidate.displayName}**`, ''];
 
-  lines.push(formatImpactRiskTableHtml(candidate), '');
+  lines.push(
+    ...formatSeverityRiskSection({
+      label: 'Severity',
+      score: candidate.impact,
+      statement: candidate.impactStatement,
+    }),
+    ...formatSeverityRiskSection({
+      label: 'Risk',
+      score: candidate.risk,
+      statement: candidate.riskStatement,
+    })
+  );
 
   if (candidate.description?.trim()) {
     lines.push(candidate.description.trim(), '');
