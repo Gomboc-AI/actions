@@ -96,7 +96,7 @@ runs:
     - name: Cache ORL Docker image
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       id: orl-docker-cache
-      uses: actions/cache@a7b3cd8e169a6e681c9e24c1ae4970e4d7b5a97d # v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: /tmp/orl-image.tar
         key: docker-${{ steps.orl-image.outputs.ref }}
@@ -113,7 +113,7 @@ runs:
       shell: bash
       run: docker load -i /tmp/orl-image.tar
 
-    - uses: actions/setup-node@8e232843a6d248ba8d4e095c17bd5511b0ed277 # v4
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       with:
         node-version: '24'
@@ -148,7 +148,7 @@ runs:
     - name: Cache rules
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       id: rules-cache
-      uses: actions/cache@a7b3cd8e169a6e681c9e24c1ae4970e4d7b5a97d # v4
+      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
         path: ${{ runner.temp }}/orl-rules
         key: orl-rules-${{ steps.orl-image.outputs.ref }}-${{ inputs.rules-service-url }}-${{ steps.resolve-channel.outputs.channel }}
@@ -236,7 +236,7 @@ runs:
 
     - name: Upload ORL artifacts
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
-      uses: actions/upload-artifact@26f96dfa697d77e81fd4617d9a072eb3299ea436 # v4
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: gomboc-orl-report
         path: ${{ runner.temp }}/gomboc-orl/
