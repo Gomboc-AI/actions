@@ -65,8 +65,11 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].endLine, 14);
     assert.equal(candidates[0].impact, 'high');
     assert.equal(candidates[0].risk, 'medium');
-    assert.match(formatInlineCommentBody(candidates[0]), /IAM-based permissions/);
-    assert.match(formatInlineCommentBody(candidates[0]), /lose access/);
+    const body = formatInlineCommentBody(candidates[0]);
+    assert.match(body, /\| Severity \| high \| .*IAM-based permissions/);
+    assert.match(body, /\| Risk \| medium \| .*lose access/);
+    assert.doesNotMatch(body, /\*\*Impact\*\*/);
+    assert.doesNotMatch(body, /\*\*Risk\*\*/);
   });
 
   it('links rule name to portal ruleset page', () => {
@@ -75,7 +78,8 @@ describe('extract-audit-comments', () => {
       ruleName:
         'gomboc-ai/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001',
       displayName: 'Ensure Storage Bucket uniform bucket-level access is enabled',
-      description: 'Enables uniform bucket-level access for GCP Storage Buckets.',
+      description:
+        '## Description\n\nEnables uniform bucket-level access for GCP Storage Buckets.',
       risk: 'medium',
       filePath: 'main.tf',
       line: 12,
@@ -90,6 +94,7 @@ describe('extract-audit-comments', () => {
       /\[gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001\]\(https:\/\/app\.gomboc\.ai\/data-library\/rules\/gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled\)/
     );
     assert.match(body, /## Description/);
+    assert.doesNotMatch(body, /## Description\n\n## Description/);
   });
 
   it('anchors findings from files_changed line on PR-scannable paths', () => {

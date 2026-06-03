@@ -234,19 +234,18 @@ export function extractAuditCommentCandidates(args) {
     }
     return candidates;
 }
+function tableCell(value) {
+    if (!value?.trim())
+        return '—';
+    return value.trim().replace(/\|/g, '\\|').replace(/\s+/g, ' ');
+}
 export function formatInlineCommentBody(candidate, options = {}) {
     const lines = [AUDIT_COMMENT_MARKER, `**Gomboc ORL:** ${candidate.displayName}`, ''];
-    lines.push('| | |', '|---|---|');
-    lines.push(`| Impact | ${formatScoreCell(candidate.impact)} |`);
-    lines.push(`| Risk | ${formatScoreCell(candidate.risk)} |`, '');
-    if (candidate.impactStatement?.trim()) {
-        lines.push('**Impact**', '', candidate.impactStatement.trim(), '');
-    }
-    if (candidate.riskStatement?.trim()) {
-        lines.push('**Risk**', '', candidate.riskStatement.trim(), '');
-    }
+    lines.push('| | Score | Description |', '|---|---|---|');
+    lines.push(`| Severity | ${formatScoreCell(candidate.impact)} | ${tableCell(candidate.impactStatement)} |`);
+    lines.push(`| Risk | ${formatScoreCell(candidate.risk)} | ${tableCell(candidate.riskStatement)} |`, '');
     if (candidate.description?.trim()) {
-        lines.push('## Description', '', candidate.description.trim(), '');
+        lines.push(candidate.description.trim(), '');
     }
     const portalBase = options.portalServiceUrl?.trim();
     if (portalBase) {
