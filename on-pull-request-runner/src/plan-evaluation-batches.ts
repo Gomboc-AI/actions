@@ -4,11 +4,11 @@
 import fs from 'node:fs';
 import { artifactPath } from './lib/artifacts.js';
 import { orlLanguageForFile } from './lib/language.js';
-import { isUnderPath } from './lib/paths.js';
+import { buildEvaluationBatches } from './lib/plan-batches.js';
 import { setOutput } from './lib/github-output.js';
 import { exitSkip, runMain } from './lib/runner.js';
 import { requireEnv } from './lib/env.js';
-import type { EvaluationBatch, TouchedWorkspace } from './types.js';
+import type { TouchedWorkspace } from './types.js';
 
 async function main(): Promise<void> {
   const workspace = requireEnv('GITHUB_WORKSPACE');
@@ -19,27 +19,12 @@ async function main(): Promise<void> {
     fs.readFileSync(artifactPath('touched-workspaces.json'), 'utf8')
   ) as { workspaces: TouchedWorkspace[] };
 
-  const batches: EvaluationBatch[] = [];
-  let batchIndex = 0;
-
-  for (const ws of workspaces) {
-    for (const lang of ws.languages) {
-      const files = scannable.filter((file) => {
-        if (!isUnderPath({ filePath: file, dirPath: ws.workspacePath })) return false;
-        const orlLang = orlLanguageForFile({ filePath: file, workspaceRoot: workspace });
-        return orlLang === lang.name;
-      });
-
-      if (files.length === 0) continue;
-
-      batches.push({
-        batchId: `batch-${batchIndex++}`,
-        workspacePath: ws.workspacePath,
-        orlLanguage: lang.name,
-        files,
-      });
-    }
-  }
+  const batches = buildEvaluationBatches({
+    scannableFiles: scannable,
+    workspaces,
+    resolveLanguage: (filePath) =>
+      orlLanguageForFile({ filePath, workspaceRoot: workspace }),
+  });
 
   fs.writeFileSync(
     artifactPath('evaluation-batches.json'),
