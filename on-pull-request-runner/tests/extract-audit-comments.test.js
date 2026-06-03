@@ -27,8 +27,12 @@ describe('extract-audit-comments', () => {
                     name: 'orl-rule:uniform-bucket-level-access',
                     display_name: 'Ensure uniform bucket-level access',
                     annotations: {
-                      'gomboc-ai/risk/score': 'Medium',
-                      'gomboc-ai/severity/score': 'High',
+                      'gomboc-ai/impact/score': 'high',
+                      'gomboc-ai/impact/statement-plain':
+                        'Simplifies access control by enforcing IAM-based permissions.',
+                      'gomboc-ai/risk/score': 'medium',
+                      'gomboc-ai/risk/statement-plain':
+                        'Applications relying on ACLs will immediately lose access.',
                     },
                   },
                   findings: 1,
@@ -59,9 +63,33 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].filePath, 'main.tf');
     assert.equal(candidates[0].line, 12);
     assert.equal(candidates[0].endLine, 14);
-    assert.equal(candidates[0].severity, 'High');
-    assert.equal(candidates[0].risk, 'Medium');
-    assert.match(formatInlineCommentBody(candidates[0]), /Medium/);
+    assert.equal(candidates[0].impact, 'high');
+    assert.equal(candidates[0].risk, 'medium');
+    assert.match(formatInlineCommentBody(candidates[0]), /IAM-based permissions/);
+    assert.match(formatInlineCommentBody(candidates[0]), /lose access/);
+  });
+
+  it('links rule name to portal ruleset page', () => {
+    const candidate = {
+      dedupeKey: 'k',
+      ruleName:
+        'gomboc-ai/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001',
+      displayName: 'Ensure Storage Bucket uniform bucket-level access is enabled',
+      description: 'Enables uniform bucket-level access for GCP Storage Buckets.',
+      risk: 'medium',
+      filePath: 'main.tf',
+      line: 12,
+    };
+
+    const body = formatInlineCommentBody(candidate, {
+      portalServiceUrl: 'https://app.gomboc.ai',
+    });
+
+    assert.match(
+      body,
+      /\[gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001\]\(https:\/\/app\.gomboc\.ai\/data-library\/rules\/gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled\)/
+    );
+    assert.match(body, /## Description/);
   });
 
   it('anchors findings from files_changed line on PR-scannable paths', () => {

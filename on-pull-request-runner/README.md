@@ -44,7 +44,7 @@ See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 | Supported | Not yet |
 |-----------|---------|
 | `mode: audit` | `mode: remediate` (stacked remediation PR) |
-| Inline review comments on changed lines (severity / risk) | Comments on unchanged lines outside the PR diff |
+| Inline review comments on changed lines (impact / risk) | Comments on unchanged lines outside the PR diff |
 | Summary PR comment (updated each run) | `push` / `schedule` triggers |
 | `fail-on-findings` to block the job | — |
 
@@ -68,6 +68,7 @@ See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 | `orl-image` | `""` | Full Docker image ref override |
 | `rules-service-url` | `https://rules.app.gomboc.ai` | Rules service base URL |
 | `integrations-service-url` | `https://integrations.app.gomboc.ai` | Integrations base URL |
+| `portal-service-url` | `https://app.gomboc.ai` | Portal base URL for rule links in inline comments |
 | `integrations-enabled` | `true` | Set `false` to skip Integrations POST |
 | `scan-timeout-seconds` | `90` | Per-batch remediate timeout |
 | `comment-max-per-pr` | `50` | Max inline review comments per PR run |

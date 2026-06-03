@@ -13,8 +13,8 @@ import {
 } from './lib/extract-audit-comments.js';
 import { envBool, envInt, requireEnv } from './lib/env.js';
 import {
-  formatSeverityRiskCell,
-  ruleSeverityRisk,
+  formatScoreCell,
+  ruleImpactRisk,
 } from './lib/rule-metadata.js';
 import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
@@ -149,13 +149,13 @@ function formatSummaryBody(args: {
 
   if (rules.length) {
     lines.push('', '### Rules with findings', '');
-    lines.push('| Rule | Severity | Risk | Findings |');
-    lines.push('|------|----------|------|----------|');
+    lines.push('| Rule | Impact | Risk | Findings |');
+    lines.push('|------|--------|------|----------|');
     for (const rule of rules) {
-      const { severity, risk } = ruleSeverityRisk(rule);
+      const { impact, risk } = ruleImpactRisk(rule);
       const name = rule.metadata?.display_name ?? rule.name;
       lines.push(
-        `| ${name} | ${formatSeverityRiskCell(severity)} | ${formatSeverityRiskCell(risk)} | ${rule.findings ?? 0} |`
+        `| ${name} | ${formatScoreCell(impact)} | ${formatScoreCell(risk)} | ${rule.findings ?? 0} |`
       );
     }
   }
@@ -198,9 +198,18 @@ async function postInlineComments(args: {
   headSha: string;
   candidates: AuditCommentCandidate[];
   maxComments: number;
+  portalServiceUrl: string;
 }): Promise<{ posted: number; skipped: number }> {
-  const { github, owner, repo, pullNumber, headSha, candidates, maxComments } =
-    args;
+  const {
+    github,
+    owner,
+    repo,
+    pullNumber,
+    headSha,
+    candidates,
+    maxComments,
+    portalServiceUrl,
+  } = args;
   let posted = 0;
   let skipped = 0;
 
@@ -219,7 +228,7 @@ async function postInlineComments(args: {
         path: candidate.filePath,
         line: candidate.line,
         startLine: candidate.startLine,
-        body: formatInlineCommentBody(candidate),
+        body: formatInlineCommentBody(candidate, { portalServiceUrl }),
       });
       posted++;
     } catch (err) {
@@ -302,6 +311,9 @@ async function main(): Promise<void> {
   });
 
   const maxComments = envInt('INPUT_COMMENT_MAX_PER_PR', 50);
+  const portalServiceUrl = (
+    process.env.INPUT_PORTAL_SERVICE_URL?.trim() || 'https://app.gomboc.ai'
+  ).replace(/\/+$/, '');
   const totalFindings = normalized.findings ?? 0;
   const unanchored = Math.max(0, totalFindings - candidates.length);
 
@@ -320,6 +332,7 @@ async function main(): Promise<void> {
     headSha: pr.headSha,
     candidates,
     maxComments,
+    portalServiceUrl,
   });
 
   const summaryBody = formatSummaryBody({

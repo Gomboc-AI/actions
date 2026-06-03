@@ -1,15 +1,18 @@
 import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-report-path.js';
-import { ruleSeverityRisk } from './rule-metadata.js';
+import { formatScoreCell, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
+import { portalRuleUrl } from './portal-url.js';
 import { resolveScannablePath } from './scannable-path.js';
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
 function ruleMeta(rule) {
     const meta = rule.metadata;
-    const { severity, risk } = ruleSeverityRisk(rule);
+    const { impact, impactStatement, risk, riskStatement } = ruleImpactRisk(rule);
     return {
         displayName: meta?.display_name ?? meta?.name ?? rule.name,
-        description: meta?.description,
-        severity,
+        description: ruleDescription(rule),
+        impact,
+        impactStatement,
         risk,
+        riskStatement,
     };
 }
 function anchorFromLocation(loc) {
@@ -217,8 +220,10 @@ export function extractAuditCommentCandidates(args) {
                     ruleName: rule.name,
                     displayName: meta.displayName,
                     description: meta.description,
-                    severity: meta.severity,
+                    impact: meta.impact,
+                    impactStatement: meta.impactStatement,
                     risk: meta.risk,
+                    riskStatement: meta.riskStatement,
                     filePath: attempt.scannablePath,
                     line: attempt.anchor.line,
                     startLine: attempt.anchor.startLine,
@@ -229,15 +234,31 @@ export function extractAuditCommentCandidates(args) {
     }
     return candidates;
 }
-export function formatInlineCommentBody(candidate) {
+export function formatInlineCommentBody(candidate, options = {}) {
     const lines = [AUDIT_COMMENT_MARKER, `**Gomboc ORL:** ${candidate.displayName}`, ''];
     lines.push('| | |', '|---|---|');
-    lines.push(`| Severity | ${candidate.severity?.trim() || '—'} |`);
-    lines.push(`| Risk | ${candidate.risk?.trim() || '—'} |`, '');
-    if (candidate.description) {
-        lines.push(candidate.description.trim(), '');
+    lines.push(`| Impact | ${formatScoreCell(candidate.impact)} |`);
+    lines.push(`| Risk | ${formatScoreCell(candidate.risk)} |`, '');
+    if (candidate.impactStatement?.trim()) {
+        lines.push('**Impact**', '', candidate.impactStatement.trim(), '');
     }
-    lines.push(`\`${candidate.ruleName}\``);
+    if (candidate.riskStatement?.trim()) {
+        lines.push('**Risk**', '', candidate.riskStatement.trim(), '');
+    }
+    if (candidate.description?.trim()) {
+        lines.push('## Description', '', candidate.description.trim(), '');
+    }
+    const portalBase = options.portalServiceUrl?.trim();
+    if (portalBase) {
+        const href = portalRuleUrl({
+            portalBaseUrl: portalBase,
+            ruleName: candidate.ruleName,
+        });
+        lines.push(`[${candidate.ruleName}](${href})`);
+    }
+    else {
+        lines.push(`\`${candidate.ruleName}\``);
+    }
     return lines.join('\n');
 }
 //# sourceMappingURL=extract-audit-comments.js.map

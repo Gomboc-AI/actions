@@ -29,6 +29,10 @@ inputs:
     description: Gomboc Integrations Service base URL
     required: false
     default: 'https://integrations.app.gomboc.ai'
+  portal-service-url:
+    description: Gomboc portal base URL for rule links in audit comments
+    required: false
+    default: 'https://app.gomboc.ai'
   integrations-enabled:
     description: POST scan results to Integrations
     required: false
@@ -235,6 +239,7 @@ runs:
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_FAIL_ON_FINDINGS: ${{ inputs.fail-on-findings }}
         INPUT_COMMENT_MAX_PER_PR: ${{ inputs.comment-max-per-pr }}
+        INPUT_PORTAL_SERVICE_URL: ${{ inputs.portal-service-url }}
       run: node dist/publish-audit-comments.js
 
     - name: Upload ORL artifacts

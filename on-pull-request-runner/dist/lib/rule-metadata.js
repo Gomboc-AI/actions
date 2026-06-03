@@ -30,29 +30,45 @@ function labelFromClassifications(classifications, segment) {
     }
     return undefined;
 }
-/** Reads human-readable severity and risk from rule metadata. */
-export function ruleSeverityRisk(rule) {
+/** Reads impact/risk scores and plain-text statements from rule metadata. */
+export function ruleImpactRisk(rule) {
     const ann = rule.metadata?.annotations;
     const classifications = rule.metadata?.classifications;
-    const severity = pickAnnotation(ann, [
-        'gomboc-ai/severity',
-        'gomboc-ai/severity/score',
-        'severity',
-        'policy/severity',
-        'gomboc.ai/severity',
-    ]) ?? labelFromClassifications(classifications, 'severity');
-    const risk = pickAnnotation(ann, [
-        'gomboc-ai/risk/score',
-        'gomboc-ai/risk/level',
-        'gomboc-ai/risk',
-        'risk/score',
-        'risk',
-        'policy/risk',
-        'gomboc.ai/risk',
-    ]) ?? labelFromClassifications(classifications, 'risk');
-    return { severity, risk };
+    return {
+        impact: pickAnnotation(ann, [
+            'gomboc-ai/impact/score',
+            'gomboc-ai/impact',
+            'impact/score',
+            'impact',
+        ]) ?? labelFromClassifications(classifications, 'impact'),
+        impactStatement: pickAnnotation(ann, [
+            'gomboc-ai/impact/statement-plain',
+            'gomboc-ai/impact/statement',
+        ]),
+        risk: pickAnnotation(ann, [
+            'gomboc-ai/risk/score',
+            'gomboc-ai/risk/level',
+            'gomboc-ai/risk',
+            'risk/score',
+            'risk',
+            'policy/risk',
+        ]) ?? labelFromClassifications(classifications, 'risk'),
+        riskStatement: pickAnnotation(ann, [
+            'gomboc-ai/risk/statement-plain',
+            'gomboc-ai/risk/statement',
+        ]),
+    };
 }
-export function formatSeverityRiskCell(value) {
+/** Rule description from metadata or `gomboc-ai/description-plain`. */
+export function ruleDescription(rule) {
+    const meta = rule.metadata;
+    return (meta?.description?.trim() ||
+        pickAnnotation(meta?.annotations, [
+            'gomboc-ai/description-plain',
+            'gomboc-ai/description',
+        ]));
+}
+export function formatScoreCell(value) {
     return value?.trim() ? value.trim() : '—';
 }
 //# sourceMappingURL=rule-metadata.js.map

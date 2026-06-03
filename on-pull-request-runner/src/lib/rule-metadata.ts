@@ -1,7 +1,14 @@
 /**
- * Severity / risk labels from ORL rule metadata annotations and classifications.
+ * Impact / risk labels and statements from ORL rule metadata annotations.
  */
 import type { OrlReportRule } from '../types.js';
+
+export type RuleImpactRisk = {
+  impact?: string;
+  impactStatement?: string;
+  risk?: string;
+  riskStatement?: string;
+};
 
 function pickAnnotation(
   annotations: Record<string, string> | undefined,
@@ -41,37 +48,51 @@ function labelFromClassifications(
   return undefined;
 }
 
-/** Reads human-readable severity and risk from rule metadata. */
-export function ruleSeverityRisk(rule: OrlReportRule): {
-  severity?: string;
-  risk?: string;
-} {
+/** Reads impact/risk scores and plain-text statements from rule metadata. */
+export function ruleImpactRisk(rule: OrlReportRule): RuleImpactRisk {
   const ann = rule.metadata?.annotations;
   const classifications = rule.metadata?.classifications;
 
-  const severity =
-    pickAnnotation(ann, [
-      'gomboc-ai/severity',
-      'gomboc-ai/severity/score',
-      'severity',
-      'policy/severity',
-      'gomboc.ai/severity',
-    ]) ?? labelFromClassifications(classifications, 'severity');
-
-  const risk =
-    pickAnnotation(ann, [
-      'gomboc-ai/risk/score',
-      'gomboc-ai/risk/level',
-      'gomboc-ai/risk',
-      'risk/score',
-      'risk',
-      'policy/risk',
-      'gomboc.ai/risk',
-    ]) ?? labelFromClassifications(classifications, 'risk');
-
-  return { severity, risk };
+  return {
+    impact:
+      pickAnnotation(ann, [
+        'gomboc-ai/impact/score',
+        'gomboc-ai/impact',
+        'impact/score',
+        'impact',
+      ]) ?? labelFromClassifications(classifications, 'impact'),
+    impactStatement: pickAnnotation(ann, [
+      'gomboc-ai/impact/statement-plain',
+      'gomboc-ai/impact/statement',
+    ]),
+    risk:
+      pickAnnotation(ann, [
+        'gomboc-ai/risk/score',
+        'gomboc-ai/risk/level',
+        'gomboc-ai/risk',
+        'risk/score',
+        'risk',
+        'policy/risk',
+      ]) ?? labelFromClassifications(classifications, 'risk'),
+    riskStatement: pickAnnotation(ann, [
+      'gomboc-ai/risk/statement-plain',
+      'gomboc-ai/risk/statement',
+    ]),
+  };
 }
 
-export function formatSeverityRiskCell(value: string | undefined): string {
+/** Rule description from metadata or `gomboc-ai/description-plain`. */
+export function ruleDescription(rule: OrlReportRule): string | undefined {
+  const meta = rule.metadata;
+  return (
+    meta?.description?.trim() ||
+    pickAnnotation(meta?.annotations, [
+      'gomboc-ai/description-plain',
+      'gomboc-ai/description',
+    ])
+  );
+}
+
+export function formatScoreCell(value: string | undefined): string {
   return value?.trim() ? value.trim() : '—';
 }

@@ -6,7 +6,7 @@ import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
 import { AUDIT_COMMENT_MARKER, extractAuditCommentCandidates, formatInlineCommentBody, } from './lib/extract-audit-comments.js';
 import { envBool, envInt, requireEnv } from './lib/env.js';
-import { formatSeverityRiskCell, ruleSeverityRisk, } from './lib/rule-metadata.js';
+import { formatScoreCell, ruleImpactRisk, } from './lib/rule-metadata.js';
 import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
@@ -96,12 +96,12 @@ function formatSummaryBody(args) {
     }
     if (rules.length) {
         lines.push('', '### Rules with findings', '');
-        lines.push('| Rule | Severity | Risk | Findings |');
-        lines.push('|------|----------|------|----------|');
+        lines.push('| Rule | Impact | Risk | Findings |');
+        lines.push('|------|--------|------|----------|');
         for (const rule of rules) {
-            const { severity, risk } = ruleSeverityRisk(rule);
+            const { impact, risk } = ruleImpactRisk(rule);
             const name = rule.metadata?.display_name ?? rule.name;
-            lines.push(`| ${name} | ${formatSeverityRiskCell(severity)} | ${formatSeverityRiskCell(risk)} | ${rule.findings ?? 0} |`);
+            lines.push(`| ${name} | ${formatScoreCell(impact)} | ${formatScoreCell(risk)} | ${rule.findings ?? 0} |`);
         }
     }
     if (workflowUrl) {
@@ -126,7 +126,7 @@ async function removePriorAuditComments(args) {
     }
 }
 async function postInlineComments(args) {
-    const { github, owner, repo, pullNumber, headSha, candidates, maxComments } = args;
+    const { github, owner, repo, pullNumber, headSha, candidates, maxComments, portalServiceUrl, } = args;
     let posted = 0;
     let skipped = 0;
     for (const candidate of candidates) {
@@ -143,7 +143,7 @@ async function postInlineComments(args) {
                 path: candidate.filePath,
                 line: candidate.line,
                 startLine: candidate.startLine,
-                body: formatInlineCommentBody(candidate),
+                body: formatInlineCommentBody(candidate, { portalServiceUrl }),
             });
             posted++;
         }
@@ -200,6 +200,7 @@ async function main() {
         diffChangedLines,
     });
     const maxComments = envInt('INPUT_COMMENT_MAX_PER_PR', 50);
+    const portalServiceUrl = (process.env.INPUT_PORTAL_SERVICE_URL?.trim() || 'https://app.gomboc.ai').replace(/\/+$/, '');
     const totalFindings = normalized.findings ?? 0;
     const unanchored = Math.max(0, totalFindings - candidates.length);
     await removePriorAuditComments({
@@ -216,6 +217,7 @@ async function main() {
         headSha: pr.headSha,
         candidates,
         maxComments,
+        portalServiceUrl,
     });
     const summaryBody = formatSummaryBody({
         findings: normalized.findings ?? 0,
