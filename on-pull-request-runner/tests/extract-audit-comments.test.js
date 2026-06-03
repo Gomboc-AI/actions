@@ -66,8 +66,8 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].impact, 'high');
     assert.equal(candidates[0].risk, 'medium');
     const body = formatInlineCommentBody(candidates[0]);
-    assert.match(body, /## Severity: `HIGH`/);
-    assert.match(body, /## Risk: `MEDIUM`/);
+    assert.match(body, /### Severity: `HIGH`/);
+    assert.match(body, /### Risk: `MEDIUM`/);
     assert.match(body, /IAM-based permissions/);
     assert.match(body, /lose access/);
     assert.doesNotMatch(body, /<table>/);

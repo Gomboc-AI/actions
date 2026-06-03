@@ -239,7 +239,7 @@ function formatScoreLabel(score) {
     return cell === '—' ? cell : cell.toUpperCase();
 }
 function formatSeverityRiskSection(args) {
-    const lines = [`## ${args.label}: \`${formatScoreLabel(args.score)}\``, ''];
+    const lines = [`### ${args.label}: \`${formatScoreLabel(args.score)}\``, ''];
     if (args.statement?.trim()) {
         lines.push(args.statement.trim(), '');
     }

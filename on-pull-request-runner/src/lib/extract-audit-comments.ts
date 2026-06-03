@@ -362,7 +362,7 @@ function formatSeverityRiskSection(args: {
   score: string | undefined;
   statement: string | undefined;
 }): string[] {
-  const lines = [`## ${args.label}: \`${formatScoreLabel(args.score)}\``, ''];
+  const lines = [`### ${args.label}: \`${formatScoreLabel(args.score)}\``, ''];
   if (args.statement?.trim()) {
     lines.push(args.statement.trim(), '');
   }
