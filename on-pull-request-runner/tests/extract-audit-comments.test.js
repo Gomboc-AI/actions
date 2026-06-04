@@ -105,6 +105,8 @@ describe('extract-audit-comments', () => {
     assert.doesNotMatch(body, /## Description/);
     assert.doesNotMatch(body, /gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001\]/);
     assert.ok(body.indexOf('[Read more]') < body.indexOf('<details>'));
+    assert.doesNotMatch(body, /\n\n<details>/);
+    assert.doesNotMatch(body, /<\/details>\n\n<details>/);
   });
 
   it('anchors findings from files_changed line on PR-scannable paths', () => {

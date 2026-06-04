@@ -3,6 +3,7 @@
  */
 import fs from 'node:fs';
 import { artifactPath } from './lib/artifacts.js';
+import { appendActionNotice, integrationsErrorMessage, } from './lib/action-notices.js';
 import { envBool } from './lib/env.js';
 import { appendStepSummary } from './lib/github-output.js';
 import { loadPullRequestContext } from './lib/github-context.js';
@@ -52,6 +53,13 @@ async function main() {
         });
         if (!res.ok) {
             const text = await res.text();
+            const message = integrationsErrorMessage(res.status, text);
+            appendActionNotice({
+                level: res.status === 401 || res.status === 403 ? 'error' : 'warning',
+                source: 'integrations',
+                status: res.status,
+                message,
+            });
             appendStepSummary(`### Integrations warning\n\nPOST failed (${res.status}): ${text.slice(0, 500)}\n`);
             console.warn(`Integrations POST failed: ${res.status} ${text}`);
             return;
@@ -60,6 +68,11 @@ async function main() {
     }
     catch (err) {
         const message = err instanceof Error ? err.message : String(err);
+        appendActionNotice({
+            level: 'warning',
+            source: 'integrations',
+            message,
+        });
         appendStepSummary(`### Integrations warning\n\n${message}\n`);
         console.warn(`Integrations POST error: ${message}`);
     }

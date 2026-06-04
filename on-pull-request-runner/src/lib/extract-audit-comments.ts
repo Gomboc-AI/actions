@@ -382,23 +382,10 @@ function formatSeverityRiskAccordion(args: {
   const title = `### ${args.label}: \`${formatScoreLabel(args.score)}\``;
   const statement = args.statement?.trim();
   if (!statement) {
-    return [title, ''];
+    return [title];
   }
 
-  return [
-    '<details>',
-    '',
-    '<summary>',
-    '',
-    title,
-    '',
-    '</summary>',
-    '',
-    statement,
-    '',
-    '</details>',
-    '',
-  ];
+  return ['<details>', `<summary>${title}</summary>`, '', statement, '</details>'];
 }
 
 /** Removes a leading `## Description` heading from rule metadata text. */
@@ -442,7 +429,7 @@ export function formatInlineCommentBody(
     ruleName: candidate.ruleName,
   });
   if (descriptionBlock) {
-    lines.push(descriptionBlock, '');
+    lines.push(descriptionBlock);
   }
 
   lines.push(

@@ -11,6 +11,7 @@ import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { countRuleFindings, totalsFromBatchReports, totalsFromReport, } from './lib/report-counts.js';
+import { formatActionNoticesSection, hasAuthFailureNotices, hasErrorNotices, loadActionNotices, } from './lib/action-notices.js';
 import { runMain } from './lib/runner.js';
 function loadJson(file) {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -76,35 +77,37 @@ function buildDiffChangedLinesMap(args) {
     return map;
 }
 function formatSummaryBody(args) {
-    const { findings, fixes, changes, posted, skipped, unanchored, candidates, batchesEvaluated, rules, workflowUrl, } = args;
-    const lines = [
-        AUDIT_COMMENT_MARKER,
-        '## Gomboc Assessment Results',
-        '',
-        '| Metric | Count |',
-        '|--------|-------|',
-        `| Findings | ${findings} |`,
-        `| Fixes | ${fixes} |`,
-        `| Changes | ${changes} |`,
-        '',
-        `Posted **${posted}** inline comment(s) on this PR.`,
-    ];
-    if (unanchored > 0) {
-        lines.push('', `${unanchored} finding(s) had no resolvable line location in the assessment report.`);
+    const { findings, fixes, changes, posted, skipped, unanchored, candidates, batchesEvaluated, rules, workflowUrl, notices, } = args;
+    const lines = [AUDIT_COMMENT_MARKER, '## Gomboc Assessment Results', ''];
+    lines.push(...formatActionNoticesSection(notices));
+    const suppressMetrics = hasErrorNotices(notices) || hasAuthFailureNotices(notices);
+    if (!suppressMetrics) {
+        lines.push('| Metric | Count |', '|--------|-------|', `| Findings | ${findings} |`, `| Fixes | ${fixes} |`, `| Changes | ${changes} |`, '', `Posted **${posted}** inline comment(s) on this PR.`);
     }
-    if (findings > 0 && candidates === 0) {
-        lines.push('', 'Findings were reported but none could be anchored on changed lines in this PR.');
+    else {
+        lines.push('The assessment did not complete successfully, so finding counts are not available.', '');
+        if (posted > 0) {
+            lines.push(`Posted **${posted}** inline comment(s) on this PR.`, '');
+        }
     }
-    if (skipped > 0) {
-        lines.push('', `${skipped} inline comment(s) could not be posted on the PR diff (line outside diff hunk or GitHub rejected the anchor).`);
+    if (!suppressMetrics) {
+        if (unanchored > 0) {
+            lines.push('', `${unanchored} finding(s) had no resolvable line location in the assessment report.`);
+        }
+        if (findings > 0 && candidates === 0) {
+            lines.push('', 'Findings were reported but none could be anchored on changed lines in this PR.');
+        }
+        if (skipped > 0) {
+            lines.push('', `${skipped} inline comment(s) could not be posted on the PR diff (line outside diff hunk or GitHub rejected the anchor).`);
+        }
+        if (posted === 0 && findings > 0 && candidates > 0 && skipped === 0) {
+            lines.push('', 'No inline comments were posted despite resolvable finding anchors.');
+        }
+        if (batchesEvaluated === 0) {
+            lines.push('', 'No evaluation batches ran; prior inline comments were left unchanged.');
+        }
     }
-    if (posted === 0 && findings > 0 && candidates > 0 && skipped === 0) {
-        lines.push('', 'No inline comments were posted despite resolvable finding anchors.');
-    }
-    if (batchesEvaluated === 0) {
-        lines.push('', 'No evaluation batches ran; prior inline comments were left unchanged.');
-    }
-    if (rules.length) {
+    if (!suppressMetrics && rules.length) {
         lines.push('', '### Rules with findings', '');
         lines.push('| Rule | Impact | Risk | Findings |');
         lines.push('|------|--------|------|----------|');
@@ -286,6 +289,7 @@ async function main() {
         batchesEvaluated: batchReports.length,
         rules: collectRulesWithFindings(batchReports),
         workflowUrl: workflowRunUrl(),
+        notices: loadActionNotices(),
     });
     await upsertSummaryComment({
         github,

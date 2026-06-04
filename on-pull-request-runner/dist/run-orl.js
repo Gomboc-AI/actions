@@ -11,6 +11,7 @@ import { envInt } from './lib/env.js';
 import { mergeBatchResults } from './lib/merge-orl-results.js';
 import { countRuleFindings, totalsFromReport } from './lib/report-counts.js';
 import { appendStepSummary } from './lib/github-output.js';
+import { appendActionNotice } from './lib/action-notices.js';
 import { stageBatchWorkspace } from './lib/stage-workspace.js';
 import { runMain } from './lib/runner.js';
 import { requireEnv } from './lib/env.js';
@@ -145,6 +146,13 @@ async function main() {
     summary += `\n**Totals:** findings=${outcome.mergedReport.spec.findings}, fixes=${outcome.mergedReport.spec.fixes}, changes=${outcome.mergedReport.spec.changes}\n`;
     if (outcome.warnings.length) {
         summary += `\n### Warnings\n${outcome.warnings.map((w) => `- ${w}`).join('\n')}\n`;
+        for (const warning of outcome.warnings) {
+            appendActionNotice({
+                level: 'warning',
+                source: 'orl',
+                message: warning,
+            });
+        }
     }
     appendStepSummary(summary);
     fs.writeFileSync(path.join(getArtifactsRoot(), 'run-complete.json'), JSON.stringify({ ok: !outcome.hadExecutionFailure }, null, 2));
