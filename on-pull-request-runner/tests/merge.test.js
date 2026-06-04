@@ -46,6 +46,11 @@ describe('merge-orl-results', () => {
     assert.equal(outcome.mergedReport.spec.fixes, 1);
     assert.equal(outcome.hadExecutionFailure, false);
     assert.equal(outcome.warnings.length, 1);
+    assert.match(
+      outcome.warnings[0],
+      /Batch b \(apps\/yaml\): ORL could not remediate all findings/
+    );
+    assert.doesNotMatch(outcome.warnings[0], /exited with code/);
   });
 
   it('uses rule-level findings when spec findings is 0', () => {

@@ -2,6 +2,7 @@
  * Aggregates per-batch ORL reports and diagnostics into a single merged outcome.
  */
 import type { OrlReport, OrlReportRule } from '../types.js';
+import { formatBatchExitWarning } from './orl-exit-codes.js';
 import { countRuleFindings } from './report-counts.js';
 
 /** Result of one parallel `orl remediate` docker invocation. */
@@ -50,9 +51,7 @@ export function mergeBatchResults(results: BatchResult[]): MergeOutcome {
   for (const r of results) {
     if (r.exitCode === 1) hadExecutionFailure = true;
     if (r.exitCode === 2 || r.exitCode === 3) {
-      warnings.push(
-        `Batch ${r.batchId} (${r.workspacePath}/${r.orlLanguage}) exited with code ${r.exitCode}`
-      );
+      warnings.push(formatBatchExitWarning(r));
     }
   }
 
