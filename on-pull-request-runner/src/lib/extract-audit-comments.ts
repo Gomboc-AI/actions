@@ -369,11 +369,23 @@ function formatSeverityRiskSection(args: {
   return lines;
 }
 
+/** Removes a leading `## Description` heading from rule metadata text. */
+export function stripDescriptionHeading(description: string): string {
+  return description.trim().replace(/^##\s+Description\s*\n*/i, '').trim();
+}
+
 export function formatInlineCommentBody(
   candidate: AuditCommentCandidate,
   options: FormatInlineCommentOptions = {}
 ): string {
-  const lines = [AUDIT_COMMENT_MARKER, `**${candidate.displayName}**`, ''];
+  const lines = [AUDIT_COMMENT_MARKER, `### ${candidate.displayName}`, ''];
+
+  const description = candidate.description
+    ? stripDescriptionHeading(candidate.description)
+    : '';
+  if (description) {
+    lines.push(description, '');
+  }
 
   lines.push(
     ...formatSeverityRiskSection({
@@ -387,10 +399,6 @@ export function formatInlineCommentBody(
       statement: candidate.riskStatement,
     })
   );
-
-  if (candidate.description?.trim()) {
-    lines.push(candidate.description.trim(), '');
-  }
 
   const portalBase = options.portalServiceUrl?.trim();
   if (portalBase) {
