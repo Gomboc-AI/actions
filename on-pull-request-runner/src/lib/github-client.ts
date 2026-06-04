@@ -149,7 +149,7 @@ export class GitHubClient {
   /** Creates an inline review comment on the PR diff. */
   async createPullReviewComment(
     args: CreatePullReviewCommentArgs
-  ): Promise<void> {
+  ): Promise<{ id: number }> {
     const { owner, repo, pullNumber, commitId, path, line, startLine, body } =
       args;
     const payload: Record<string, unknown> = {
@@ -161,8 +161,9 @@ export class GitHubClient {
     };
     if (startLine !== undefined && startLine !== line) {
       payload.start_line = startLine;
+      payload.start_side = 'RIGHT';
     }
-    await this.request(
+    return this.request<{ id: number }>(
       'POST',
       `/repos/${owner}/${repo}/pulls/${pullNumber}/comments`,
       payload

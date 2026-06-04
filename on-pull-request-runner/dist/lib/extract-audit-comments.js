@@ -3,6 +3,19 @@ import { formatScoreCell, ruleDescription, ruleImpactRisk } from './rule-metadat
 import { portalRuleUrl } from './portal-url.js';
 import { resolveScannablePath } from './scannable-path.js';
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
+export function auditCommentMarker(dedupeKey) {
+    return `<!-- gomboc-orl-audit key=${dedupeKey} -->`;
+}
+export function isAuditCommentBody(body) {
+    return body.includes('gomboc-orl-audit');
+}
+const AUDIT_DEDUPE_KEY_RE = /<!-- gomboc-orl-audit(?: key=([^\s>]+))? -->/;
+export function parseAuditCommentDedupeKey(body) {
+    const match = body.match(AUDIT_DEDUPE_KEY_RE);
+    if (!match)
+        return null;
+    return match[1] ?? null;
+}
 function ruleMeta(rule) {
     const meta = rule.metadata;
     const { impact, impactStatement, risk, riskStatement } = ruleImpactRisk(rule);
@@ -279,7 +292,7 @@ function formatDescriptionWithReadMore(args) {
     return text;
 }
 export function formatInlineCommentBody(candidate, options = {}) {
-    const lines = [AUDIT_COMMENT_MARKER, `### ${candidate.displayName}`, ''];
+    const lines = [auditCommentMarker(candidate.dedupeKey), `### ${candidate.displayName}`, ''];
     const description = candidate.description
         ? stripDescriptionHeading(candidate.description)
         : '';

@@ -81,8 +81,9 @@ export class GitHubClient {
         };
         if (startLine !== undefined && startLine !== line) {
             payload.start_line = startLine;
+            payload.start_side = 'RIGHT';
         }
-        await this.request('POST', `/repos/${owner}/${repo}/pulls/${pullNumber}/comments`, payload);
+        return this.request('POST', `/repos/${owner}/${repo}/pulls/${pullNumber}/comments`, payload);
     }
     /** Deletes a pull request review comment by id. */
     async deletePullReviewComment(args) {

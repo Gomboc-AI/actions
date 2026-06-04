@@ -17,6 +17,22 @@ import { resolveScannablePath } from './scannable-path.js';
 
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
 
+export function auditCommentMarker(dedupeKey: string): string {
+  return `<!-- gomboc-orl-audit key=${dedupeKey} -->`;
+}
+
+export function isAuditCommentBody(body: string): boolean {
+  return body.includes('gomboc-orl-audit');
+}
+
+const AUDIT_DEDUPE_KEY_RE = /<!-- gomboc-orl-audit(?: key=([^\s>]+))? -->/;
+
+export function parseAuditCommentDedupeKey(body: string): string | null {
+  const match = body.match(AUDIT_DEDUPE_KEY_RE);
+  if (!match) return null;
+  return match[1] ?? null;
+}
+
 export type AuditCommentCandidate = {
   dedupeKey: string;
   ruleName: string;
@@ -414,7 +430,7 @@ export function formatInlineCommentBody(
   candidate: AuditCommentCandidate,
   options: FormatInlineCommentOptions = {}
 ): string {
-  const lines = [AUDIT_COMMENT_MARKER, `### ${candidate.displayName}`, ''];
+  const lines = [auditCommentMarker(candidate.dedupeKey), `### ${candidate.displayName}`, ''];
 
   const description = candidate.description
     ? stripDescriptionHeading(candidate.description)

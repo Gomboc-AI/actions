@@ -8,6 +8,8 @@ import {
   AUDIT_COMMENT_MARKER,
   extractAuditCommentCandidates,
   formatInlineCommentBody,
+  isAuditCommentBody,
+  parseAuditCommentDedupeKey,
   type AuditCommentCandidate,
   type DiagnosticsShape,
 } from './lib/extract-audit-comments.js';
@@ -116,11 +118,23 @@ function formatSummaryBody(args: {
   posted: number;
   skipped: number;
   unanchored: number;
+  candidates: number;
+  batchesEvaluated: number;
   rules: OrlReportRule[];
   workflowUrl: string | null;
 }): string {
-  const { findings, fixes, changes, posted, skipped, unanchored, rules, workflowUrl } =
-    args;
+  const {
+    findings,
+    fixes,
+    changes,
+    posted,
+    skipped,
+    unanchored,
+    candidates,
+    batchesEvaluated,
+    rules,
+    workflowUrl,
+  } = args;
   const lines = [
     AUDIT_COMMENT_MARKER,
     '## Gomboc Assessment Results',
@@ -140,11 +154,23 @@ function formatSummaryBody(args: {
       `${unanchored} finding(s) had no resolvable line location in the assessment report.`
     );
   }
+  if (findings > 0 && candidates === 0) {
+    lines.push(
+      '',
+      'Findings were reported but none could be anchored on changed lines in this PR.'
+    );
+  }
   if (skipped > 0) {
     lines.push(
       '',
       `${skipped} inline comment(s) could not be posted on the PR diff (line outside diff hunk or GitHub rejected the anchor).`
     );
+  }
+  if (posted === 0 && findings > 0 && candidates > 0 && skipped === 0) {
+    lines.push('', 'No inline comments were posted despite resolvable finding anchors.');
+  }
+  if (batchesEvaluated === 0) {
+    lines.push('', 'No evaluation batches ran; prior inline comments were left unchanged.');
   }
 
   if (rules.length) {
@@ -171,23 +197,61 @@ function formatSummaryBody(args: {
   return lines.join('\n');
 }
 
-async function removePriorAuditComments(args: {
+async function pruneStaleAuditComments(args: {
   github: GitHubClient;
   owner: string;
   repo: string;
   pullNumber: number;
-}): Promise<void> {
-  const { github, owner, repo, pullNumber } = args;
+  postedCommentIds: Set<number>;
+  activeDedupeKeys: Set<string>;
+  totalFindings: number;
+  scanCompleted: boolean;
+}): Promise<number> {
+  const {
+    github,
+    owner,
+    repo,
+    pullNumber,
+    postedCommentIds,
+    activeDedupeKeys,
+    totalFindings,
+    scanCompleted,
+  } = args;
 
   const reviewComments = await github.listPullReviewComments({
     owner,
     repo,
     pullNumber,
   });
-  for (const c of reviewComments) {
-    if (!c.body?.includes(AUDIT_COMMENT_MARKER)) continue;
-    await github.deletePullReviewComment({ owner, repo, commentId: c.id });
+
+  let removed = 0;
+  for (const comment of reviewComments) {
+    const body = comment.body ?? '';
+    if (!isAuditCommentBody(body)) continue;
+    if (postedCommentIds.has(comment.id)) continue;
+
+    const key = parseAuditCommentDedupeKey(body);
+    let shouldRemove = false;
+
+    if (key && activeDedupeKeys.has(key)) {
+      shouldRemove = true;
+    } else if (activeDedupeKeys.size > 0) {
+      shouldRemove = true;
+    } else if (totalFindings === 0 && scanCompleted) {
+      shouldRemove = true;
+    }
+
+    if (!shouldRemove) continue;
+
+    await github.deletePullReviewComment({
+      owner,
+      repo,
+      commentId: comment.id,
+    });
+    removed++;
   }
+
+  return removed;
 }
 
 async function postInlineComments(args: {
@@ -199,7 +263,12 @@ async function postInlineComments(args: {
   candidates: AuditCommentCandidate[];
   maxComments: number;
   portalServiceUrl: string;
-}): Promise<{ posted: number; skipped: number }> {
+}): Promise<{
+  posted: number;
+  skipped: number;
+  postedCommentIds: Set<number>;
+  activeDedupeKeys: Set<string>;
+}> {
   const {
     github,
     owner,
@@ -212,6 +281,8 @@ async function postInlineComments(args: {
   } = args;
   let posted = 0;
   let skipped = 0;
+  const postedCommentIds = new Set<number>();
+  const activeDedupeKeys = new Set<string>();
 
   for (const candidate of candidates) {
     if (posted >= maxComments) {
@@ -220,7 +291,7 @@ async function postInlineComments(args: {
     }
 
     try {
-      await github.createPullReviewComment({
+      const created = await github.createPullReviewComment({
         owner,
         repo,
         pullNumber,
@@ -230,6 +301,8 @@ async function postInlineComments(args: {
         startLine: candidate.startLine,
         body: formatInlineCommentBody(candidate, { portalServiceUrl }),
       });
+      postedCommentIds.add(created.id);
+      activeDedupeKeys.add(candidate.dedupeKey);
       posted++;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -240,7 +313,7 @@ async function postInlineComments(args: {
     }
   }
 
-  return { posted, skipped };
+  return { posted, skipped, postedCommentIds, activeDedupeKeys };
 }
 
 async function upsertSummaryComment(args: {
@@ -316,23 +389,38 @@ async function main(): Promise<void> {
   ).replace(/\/+$/, '');
   const totalFindings = normalized.findings ?? 0;
   const unanchored = Math.max(0, totalFindings - candidates.length);
+  const scanCompleted = batchReports.length > 0;
 
-  await removePriorAuditComments({
+  for (const { batchId, report } of batchReports) {
+    console.log(
+      `Batch ${batchId}: findings=${report.spec?.findings ?? 0}, rules=${report.spec?.rules?.length ?? 0}`
+    );
+  }
+  console.log(
+    `Inline comment planning: findings=${totalFindings}, candidates=${candidates.length}, scannable=${scannable.length}`
+  );
+
+  const { posted, skipped, postedCommentIds, activeDedupeKeys } =
+    await postInlineComments({
+      github,
+      owner,
+      repo,
+      pullNumber: pr.number,
+      headSha: pr.headSha,
+      candidates,
+      maxComments,
+      portalServiceUrl,
+    });
+
+  const removed = await pruneStaleAuditComments({
     github,
     owner,
     repo,
     pullNumber: pr.number,
-  });
-
-  const { posted, skipped } = await postInlineComments({
-    github,
-    owner,
-    repo,
-    pullNumber: pr.number,
-    headSha: pr.headSha,
-    candidates,
-    maxComments,
-    portalServiceUrl,
+    postedCommentIds,
+    activeDedupeKeys,
+    totalFindings,
+    scanCompleted,
   });
 
   const summaryBody = formatSummaryBody({
@@ -342,6 +430,8 @@ async function main(): Promise<void> {
     posted,
     skipped,
     unanchored,
+    candidates: candidates.length,
+    batchesEvaluated: batchReports.length,
     rules: collectRulesWithFindings(batchReports),
     workflowUrl: workflowRunUrl(),
   });
@@ -355,7 +445,7 @@ async function main(): Promise<void> {
   });
 
   console.log(
-    `Audit comments: ${posted} inline posted, ${skipped} skipped, ${candidates.length} candidates`
+    `Audit comments: ${posted} inline posted, ${skipped} skipped, ${removed} stale removed, ${candidates.length} candidates`
   );
 
   if (envBool('INPUT_FAIL_ON_FINDINGS', false)) {

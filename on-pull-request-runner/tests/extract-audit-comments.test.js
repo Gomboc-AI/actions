@@ -66,7 +66,7 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].impact, 'high');
     assert.equal(candidates[0].risk, 'medium');
     const body = formatInlineCommentBody(candidates[0]);
-    assert.match(body, /### Ensure uniform bucket-level access/);
+    assert.match(body, /<!-- gomboc-orl-audit key=/);
     assert.match(body, /<details>/);
     assert.match(body, /### Severity: `HIGH`/);
     assert.match(body, /### Risk: `MEDIUM`/);
