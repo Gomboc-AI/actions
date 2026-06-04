@@ -25,3 +25,23 @@ jobs:
           # fail-on-findings: true   # uncomment to fail the job when ORL reports findings
         env:
           GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
+
+  # Uncomment for remediate mode (stacked remediation PR into the feature branch):
+  #
+  # orl-remediate:
+  #   runs-on: ubuntu-latest
+  #   permissions:
+  #     contents: write
+  #     pull-requests: write
+  #     packages: read
+  #   steps:
+  #     - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+  #       with:
+  #         ref: ${{ github.event.pull_request.head.sha }}
+  #         fetch-depth: 0
+  #
+  #     - uses: gomboc-ai/actions/on-pull-request-runner@v1
+  #       with:
+  #         mode: remediate
+  #       env:
+  #         GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}

@@ -25,7 +25,7 @@ function loadBatches() {
  */
 async function runBatch(args) {
     const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs } = args;
-    const { workDir, remediatePath } = stageBatchWorkspace({
+    const { workDir, remediatePath, stagedFiles } = stageBatchWorkspace({
         batch,
         workspaceRoot,
         hooksDir,
@@ -69,6 +69,7 @@ async function runBatch(args) {
     }
     const batchOut = artifactPath(`batches/${batch.batchId}`);
     fs.mkdirSync(batchOut, { recursive: true });
+    fs.writeFileSync(path.join(batchOut, 'staged-files.json'), JSON.stringify({ files: stagedFiles }, null, 2));
     if (fs.existsSync(reportHost)) {
         fs.copyFileSync(reportHost, path.join(batchOut, 'report.yaml'));
     }

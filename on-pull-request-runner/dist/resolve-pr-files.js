@@ -12,10 +12,6 @@ import { computeTouchSeeds } from './lib/paths.js';
 import { exitSkip, runMain } from './lib/runner.js';
 import { requireEnv } from './lib/env.js';
 async function main() {
-    const mode = (process.env.INPUT_MODE ?? '').trim();
-    if (mode === 'remediate') {
-        throw new Error('mode=remediate is not available yet. Use mode: audit for Phase 1.');
-    }
     const pr = loadPullRequestContext();
     const workspace = requireEnv('GITHUB_WORKSPACE');
     const maxFiles = envInt('INPUT_MAX_CHANGED_FILES', 50);

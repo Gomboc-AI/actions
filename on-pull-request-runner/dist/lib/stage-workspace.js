@@ -3,6 +3,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { isScannable } from './language.js';
 import { normalizeRepoPath } from './paths.js';
 function filesToStage(batch, workspaceRoot) {
     const staged = new Set(batch.files.map(normalizeRepoPath));
@@ -12,10 +13,13 @@ function filesToStage(batch, workspaceRoot) {
         const absDir = path.join(workspaceRoot, dir === '.' ? '' : dir);
         try {
             for (const name of fs.readdirSync(absDir)) {
-                if (!name.endsWith('.tf'))
+                const absPath = path.join(absDir, name);
+                if (!fs.statSync(absPath).isFile())
                     continue;
                 const repoPath = dir === '.' ? name : `${dir}/${name}`;
-                staged.add(normalizeRepoPath(repoPath));
+                if (isScannable({ filePath: repoPath, workspaceRoot })) {
+                    staged.add(normalizeRepoPath(repoPath));
+                }
             }
         }
         catch {
@@ -27,14 +31,14 @@ function filesToStage(batch, workspaceRoot) {
 /**
  * Builds a Docker-mounted work directory for a single evaluation batch.
  *
- * @returns Host `workDir` and container `remediatePath` passed to `orl remediate`.
+ * @returns Host `workDir`, container `remediatePath`, and repo-relative `stagedFiles`.
  */
 export function stageBatchWorkspace(args) {
     const { batch, workspaceRoot, hooksDir, batchWorkRoot } = args;
     const workDir = path.join(batchWorkRoot, batch.batchId);
     fs.mkdirSync(path.join(workDir, '.orl', 'hooks'), { recursive: true });
-    const files = filesToStage(batch, workspaceRoot);
-    for (const file of files) {
+    const stagedFiles = filesToStage(batch, workspaceRoot);
+    for (const file of stagedFiles) {
         const src = path.join(workspaceRoot, file);
         const dest = path.join(workDir, file);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
@@ -59,6 +63,6 @@ export function stageBatchWorkspace(args) {
         fs.mkdirSync(wp, { recursive: true });
     }
     const remediatePath = batch.workspacePath === '.' ? '/workspace' : `/workspace/${batch.workspacePath}`;
-    return { workDir, remediatePath };
+    return { workDir, remediatePath, stagedFiles };
 }
 //# sourceMappingURL=stage-workspace.js.map

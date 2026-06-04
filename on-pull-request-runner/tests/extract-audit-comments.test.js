@@ -1,9 +1,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   extractAuditCommentCandidates,
   formatInlineCommentBody,
 } from '../dist/lib/extract-audit-comments.js';
+
+const fixtureDir = path.join(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../fixtures/diagnostics'
+);
 
 describe('extract-audit-comments', () => {
   it('anchors findings from finding_locations (ORL report schema)', () => {
@@ -292,5 +300,98 @@ describe('extract-audit-comments', () => {
     });
 
     assert.equal(candidates[0].line, 7);
+  });
+
+  it('anchors findings from diagnostics.json hunks when report has no line', () => {
+    const diagnostics = JSON.parse(
+      fs.readFileSync(path.join(fixtureDir, 'sample.json'), 'utf8')
+    );
+
+    const candidates = extractAuditCommentCandidates({
+      batches: [{ batchId: 'batch-0', workspacePath: '.', orlLanguage: 'terraform', files: ['main.tf'] }],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 1,
+              fixes: 0,
+              changes: 0,
+              rules: [
+                {
+                  name: 'orl-rule:uniform-bucket-level-access',
+                  metadata: { name: 'orl-rule:uniform-bucket-level-access' },
+                  findings: 1,
+                  paths_with_findings: { 'main.tf': {} },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics }],
+      prScannableFiles: new Set(['main.tf']),
+    });
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].filePath, 'main.tf');
+    assert.equal(candidates[0].line, 12);
+    assert.equal(candidates[0].startLine, 12);
+  });
+
+  it('anchors findings from diagnostics.json resources when hunks are absent', () => {
+    const diagnostics = {
+      version: 1,
+      rules: [
+        {
+          ruleName: 'orl-rule:test',
+          files: [
+            {
+              path: 'template.yaml',
+              resources: [{ startLine: 10, endLine: 15 }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 1,
+              fixes: 0,
+              changes: 0,
+              rules: [
+                {
+                  name: 'orl-rule:test',
+                  metadata: { name: 'orl-rule:test' },
+                  findings: 1,
+                  paths_with_findings: { 'template.yaml': {} },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics }],
+      prScannableFiles: new Set(['template.yaml']),
+    });
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].filePath, 'template.yaml');
+    assert.equal(candidates[0].line, 10);
+    assert.equal(candidates[0].endLine, 15);
   });
 });

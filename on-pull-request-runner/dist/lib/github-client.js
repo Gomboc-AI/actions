@@ -90,6 +90,16 @@ export class GitHubClient {
         const { owner, repo, commentId } = args;
         await this.request('DELETE', `/repos/${owner}/${repo}/pulls/comments/${commentId}`);
     }
+    /** Lists open pull requests for dedupe checks (first page). */
+    async listOpenPullRequests(args) {
+        const { owner, repo } = args;
+        return this.request('GET', `/repos/${owner}/${repo}/pulls?state=open&per_page=100`);
+    }
+    /** Opens a pull request stacked into the feature branch. */
+    async createPullRequest(args) {
+        const { owner, repo, title, head, base, body } = args;
+        return this.request('POST', `/repos/${owner}/${repo}/pulls`, { title, head, base, body });
+    }
     headers(extra) {
         return {
             Authorization: `Bearer ${this.token}`,

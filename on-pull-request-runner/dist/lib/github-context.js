@@ -13,12 +13,16 @@ export function loadPullRequestContext() {
     if (!pr) {
         throw new Error('pull_request payload missing from GitHub event');
     }
+    const repository = process.env.GITHUB_REPOSITORY ?? '';
+    const headRepoFullName = pr.head.repo?.full_name ?? repository;
     return {
         number: pr.number,
         baseSha: pr.base.sha,
         headSha: pr.head.sha,
-        headRef: process.env.GITHUB_HEAD_REF ?? '',
-        repository: process.env.GITHUB_REPOSITORY ?? '',
+        headRef: process.env.GITHUB_HEAD_REF ?? pr.head.ref ?? '',
+        repository,
+        headRepoFullName,
+        isFork: headRepoFullName !== repository,
     };
 }
 //# sourceMappingURL=github-context.js.map

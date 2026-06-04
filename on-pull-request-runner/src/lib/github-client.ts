@@ -47,6 +47,22 @@ export type IssueComment = {
   body: string;
 };
 
+export type PullRequestSummary = {
+  number: number;
+  state: string;
+  head: { ref: string };
+  base: { ref: string };
+};
+
+export type CreatePullRequestArgs = {
+  owner: string;
+  repo: string;
+  title: string;
+  head: string;
+  base: string;
+  body: string;
+};
+
 /** Authenticated client using `GITHUB_TOKEN` and optional `GITHUB_API_URL`. */
 export class GitHubClient {
   constructor(
@@ -180,6 +196,28 @@ export class GitHubClient {
     await this.request(
       'DELETE',
       `/repos/${owner}/${repo}/pulls/comments/${commentId}`
+    );
+  }
+
+  /** Lists open pull requests for dedupe checks (first page). */
+  async listOpenPullRequests(args: {
+    owner: string;
+    repo: string;
+  }): Promise<PullRequestSummary[]> {
+    const { owner, repo } = args;
+    return this.request<PullRequestSummary[]>(
+      'GET',
+      `/repos/${owner}/${repo}/pulls?state=open&per_page=100`
+    );
+  }
+
+  /** Opens a pull request stacked into the feature branch. */
+  async createPullRequest(args: CreatePullRequestArgs): Promise<{ number: number; html_url: string }> {
+    const { owner, repo, title, head, base, body } = args;
+    return this.request<{ number: number; html_url: string }>(
+      'POST',
+      `/repos/${owner}/${repo}/pulls`,
+      { title, head, base, body }
     );
   }
 
