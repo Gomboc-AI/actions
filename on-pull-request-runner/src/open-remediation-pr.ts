@@ -6,6 +6,7 @@ import yaml from 'yaml';
 import { applyOrlFixes } from './lib/apply-orl-fixes.js';
 import { artifactPath } from './lib/artifacts.js';
 import {
+  configureGitIdentity,
   gitAddAll,
   gitCheckoutBranch,
   gitCommit,
@@ -146,6 +147,7 @@ async function main(): Promise<void> {
   const commitMessage = `chore(gomboc): ORL remediation for PR #${pr.number}`;
 
   gitCheckoutBranch(botBranch, workspaceRoot);
+  configureGitIdentity(workspaceRoot);
   gitAddAll(workspaceRoot);
   gitCommit(commitMessage, workspaceRoot);
   gitPush('origin', botBranch, workspaceRoot);

@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import yaml from 'yaml';
 import { applyOrlFixes } from './lib/apply-orl-fixes.js';
 import { artifactPath } from './lib/artifacts.js';
-import { gitAddAll, gitCheckoutBranch, gitCommit, gitPush, gitStatusPorcelain, } from './lib/git.js';
+import { configureGitIdentity, gitAddAll, gitCheckoutBranch, gitCommit, gitPush, gitStatusPorcelain, } from './lib/git.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { requireEnv } from './lib/env.js';
@@ -107,6 +107,7 @@ async function main() {
     const botBranch = remediationBranchName(branchPrefix, pr.number);
     const commitMessage = `chore(gomboc): ORL remediation for PR #${pr.number}`;
     gitCheckoutBranch(botBranch, workspaceRoot);
+    configureGitIdentity(workspaceRoot);
     gitAddAll(workspaceRoot);
     gitCommit(commitMessage, workspaceRoot);
     gitPush('origin', botBranch, workspaceRoot);
