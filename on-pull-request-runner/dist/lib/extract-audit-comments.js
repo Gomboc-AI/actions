@@ -258,7 +258,15 @@ function formatSeverityRiskAccordion(args) {
     if (!statement) {
         return [title];
     }
-    return ['<details>', `<summary>${title}</summary>`, '', statement, '</details>'];
+    return [
+        '<details>',
+        '<summary>',
+        title,
+        '</summary>',
+        '',
+        statement,
+        '</details>',
+    ];
 }
 /** Removes a leading `## Description` heading from rule metadata text. */
 export function stripDescriptionHeading(description) {
