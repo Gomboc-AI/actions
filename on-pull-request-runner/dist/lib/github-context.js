@@ -23,6 +23,7 @@ export function loadPullRequestContext() {
         repository,
         headRepoFullName,
         isFork: headRepoFullName !== repository,
+        authorLogin: pr.user?.login?.trim() ?? '',
     };
 }
 //# sourceMappingURL=github-context.js.map

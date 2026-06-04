@@ -221,6 +221,40 @@ export class GitHubClient {
     );
   }
 
+  /** Updates pull request title/body (used for remediation PR summary). */
+  async updatePullRequest(args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+    body: string;
+    title?: string;
+  }): Promise<void> {
+    const { owner, repo, pullNumber, body, title } = args;
+    const payload: Record<string, string> = { body };
+    if (title) payload.title = title;
+    await this.request(
+      'PATCH',
+      `/repos/${owner}/${repo}/pulls/${pullNumber}`,
+      payload
+    );
+  }
+
+  /** Assigns users to a pull request (issues API). */
+  async assignIssueAssignees(args: {
+    owner: string;
+    repo: string;
+    issueNumber: number;
+    assignees: string[];
+  }): Promise<void> {
+    const { owner, repo, issueNumber, assignees } = args;
+    if (!assignees.length) return;
+    await this.request(
+      'POST',
+      `/repos/${owner}/${repo}/issues/${issueNumber}/assignees`,
+      { assignees }
+    );
+  }
+
   private headers(extra?: HeadersInit): HeadersInit {
     return {
       Authorization: `Bearer ${this.token}`,

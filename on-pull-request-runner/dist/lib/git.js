@@ -34,6 +34,10 @@ export function configureGitIdentity(cwd) {
     git(['config', 'user.name', name], cwd);
     git(['config', 'user.email', email], cwd);
 }
+/** Resolves a git ref to a full commit SHA. */
+export function gitRevParse(ref, cwd) {
+    return git(['rev-parse', ref], cwd);
+}
 /** Creates or resets a branch at the current HEAD. */
 export function gitCheckoutBranch(branch, cwd) {
     git(['checkout', '-B', branch], cwd);

@@ -12,6 +12,8 @@ export type PullRequestContext = {
   repository: string;
   headRepoFullName: string;
   isFork: boolean;
+  /** GitHub login of the user who opened the pull request. */
+  authorLogin: string;
 };
 
 /** Loads PR context from the webhook payload; throws if not a `pull_request` event. */
@@ -23,6 +25,7 @@ export function loadPullRequestContext(): PullRequestContext {
   const event = JSON.parse(fs.readFileSync(eventPath, 'utf8')) as {
     pull_request?: {
       number: number;
+      user?: { login?: string };
       base: { sha: string };
       head: { sha: string; ref: string; repo?: { full_name?: string } };
     };
@@ -43,5 +46,6 @@ export function loadPullRequestContext(): PullRequestContext {
     repository,
     headRepoFullName,
     isFork: headRepoFullName !== repository,
+    authorLogin: pr.user?.login?.trim() ?? '',
   };
 }

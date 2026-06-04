@@ -3,16 +3,21 @@
  */
 import fs from 'node:fs';
 import yaml from 'yaml';
+import { publishAuditFeedback } from './lib/audit-feedback.js';
 import { applyOrlFixes } from './lib/apply-orl-fixes.js';
 import { artifactPath } from './lib/artifacts.js';
-import { configureGitIdentity, gitAddAll, gitCheckoutBranch, gitCommit, gitPush, gitStatusPorcelain, } from './lib/git.js';
+import { envInt } from './lib/env.js';
+import { configureGitIdentity, gitAddAll, gitCheckoutBranch, gitCommit, gitDiffNameOnly, gitPush, gitRevParse, gitStatusPorcelain, } from './lib/git.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { requireEnv } from './lib/env.js';
 import { totalsFromBatchReports } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';
+function loadJson(file) {
+    return JSON.parse(fs.readFileSync(file, 'utf8'));
+}
 function loadBatches() {
-    const raw = JSON.parse(fs.readFileSync(artifactPath('evaluation-batches.json'), 'utf8'));
+    const raw = loadJson(artifactPath('evaluation-batches.json'));
     return raw.batches;
 }
 function loadBatchReports() {
@@ -39,7 +44,7 @@ function loadStagedFiles(batchId) {
     const manifestPath = artifactPath(`batches/${batchId}/staged-files.json`);
     if (!fs.existsSync(manifestPath))
         return null;
-    const raw = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    const raw = loadJson(manifestPath);
     return raw.files ?? null;
 }
 function remediationBranchName(prefix, pullNumber) {
@@ -58,6 +63,36 @@ async function findOpenRemediationPr(args) {
         number: match.number,
         html_url: `https://github.com/${args.owner}/${args.repo}/pull/${match.number}`,
     };
+}
+function remediationScannableFiles(args) {
+    const fromDiff = gitDiffNameOnly({
+        baseSha: args.baseSha,
+        headSha: args.headSha,
+        cwd: args.workspaceRoot,
+    });
+    return [...new Set([...args.copiedPaths, ...fromDiff])].sort();
+}
+async function publishRemediationFeedback(args) {
+    const portalServiceUrl = (process.env.INPUT_PORTAL_SERVICE_URL?.trim() || 'https://app.gomboc.ai').replace(/\/+$/, '');
+    const maxComments = envInt('INPUT_COMMENT_MAX_PER_PR', 50);
+    await publishAuditFeedback({
+        github: args.github,
+        owner: args.owner,
+        repo: args.repo,
+        pullNumber: args.remediationPullNumber,
+        headSha: args.headSha,
+        baseSha: args.baseSha,
+        workspaceRoot: args.workspaceRoot,
+        scannableFiles: args.scannableFiles,
+        portalServiceUrl,
+        maxComments,
+        summaryTarget: 'pull_body',
+        introLines: [
+            `Automated ORL remediation stacked on \`${args.sourceHeadRef}\` for PR #${args.sourcePullNumber}.`,
+            '',
+            'Review and merge this PR into your feature branch before merging the original PR.',
+        ],
+    });
 }
 async function main() {
     const mode = (process.env.INPUT_MODE ?? '').trim();
@@ -112,6 +147,14 @@ async function main() {
     gitCommit(commitMessage, workspaceRoot);
     gitPush('origin', botBranch, workspaceRoot);
     console.log(`Pushed remediation branch ${botBranch}`);
+    const headSha = gitRevParse('HEAD', workspaceRoot);
+    const baseSha = gitRevParse('HEAD~1', workspaceRoot);
+    const scannableFiles = remediationScannableFiles({
+        copiedPaths,
+        workspaceRoot,
+        baseSha,
+        headSha,
+    });
     const { owner, repo } = parseOwnerRepo(pr.repository);
     const github = GitHubClient.fromEnv();
     const existing = await findOpenRemediationPr({
@@ -120,23 +163,58 @@ async function main() {
         repo,
         headRef: botBranch,
     });
+    let remediationPullNumber;
+    let remediationUrl;
     if (existing) {
-        console.log(`Updated existing remediation PR #${existing.number}: ${existing.html_url}`);
-        return;
+        remediationPullNumber = existing.number;
+        remediationUrl = existing.html_url;
+        console.log(`Updated existing remediation PR #${remediationPullNumber}: ${remediationUrl}`);
     }
-    const created = await github.createPullRequest({
-        owner,
-        repo,
-        title: commitMessage,
-        head: botBranch,
-        base: pr.headRef,
-        body: [
+    else {
+        const placeholderBody = [
             `Automated ORL remediation stacked on \`${pr.headRef}\` for PR #${pr.number}.`,
             '',
-            'Review and merge this PR into your feature branch before merging the original PR.',
-        ].join('\n'),
+            '_Assessment summary loading…_',
+        ].join('\n');
+        const created = await github.createPullRequest({
+            owner,
+            repo,
+            title: commitMessage,
+            head: botBranch,
+            base: pr.headRef,
+            body: placeholderBody,
+        });
+        remediationPullNumber = created.number;
+        remediationUrl = created.html_url;
+        console.log(`Opened remediation PR #${remediationPullNumber}: ${remediationUrl}`);
+    }
+    if (pr.authorLogin) {
+        try {
+            await github.assignIssueAssignees({
+                owner,
+                repo,
+                issueNumber: remediationPullNumber,
+                assignees: [pr.authorLogin],
+            });
+            console.log(`Assigned remediation PR #${remediationPullNumber} to @${pr.authorLogin}`);
+        }
+        catch (err) {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(`Could not assign remediation PR #${remediationPullNumber} to @${pr.authorLogin}: ${message}`);
+        }
+    }
+    await publishRemediationFeedback({
+        github,
+        owner,
+        repo,
+        remediationPullNumber,
+        workspaceRoot,
+        baseSha,
+        headSha,
+        scannableFiles,
+        sourcePullNumber: pr.number,
+        sourceHeadRef: pr.headRef,
     });
-    console.log(`Opened remediation PR #${created.number}: ${created.html_url}`);
 }
 runMain(main);
 //# sourceMappingURL=open-remediation-pr.js.map

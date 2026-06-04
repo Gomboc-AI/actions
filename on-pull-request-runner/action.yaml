@@ -251,6 +251,8 @@ runs:
         GITHUB_WORKSPACE: ${{ github.workspace }}
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_REMEDIATION_BRANCH_PREFIX: ${{ inputs.remediation-branch-prefix }}
+        INPUT_COMMENT_MAX_PER_PR: ${{ inputs.comment-max-per-pr }}
+        INPUT_PORTAL_SERVICE_URL: ${{ inputs.portal-service-url }}
       run: node dist/open-remediation-pr.js
 
     - name: Upload ORL artifacts

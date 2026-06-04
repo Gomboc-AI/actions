@@ -100,6 +100,21 @@ export class GitHubClient {
         const { owner, repo, title, head, base, body } = args;
         return this.request('POST', `/repos/${owner}/${repo}/pulls`, { title, head, base, body });
     }
+    /** Updates pull request title/body (used for remediation PR summary). */
+    async updatePullRequest(args) {
+        const { owner, repo, pullNumber, body, title } = args;
+        const payload = { body };
+        if (title)
+            payload.title = title;
+        await this.request('PATCH', `/repos/${owner}/${repo}/pulls/${pullNumber}`, payload);
+    }
+    /** Assigns users to a pull request (issues API). */
+    async assignIssueAssignees(args) {
+        const { owner, repo, issueNumber, assignees } = args;
+        if (!assignees.length)
+            return;
+        await this.request('POST', `/repos/${owner}/${repo}/issues/${issueNumber}/assignees`, { assignees });
+    }
     headers(extra) {
         return {
             Authorization: `Bearer ${this.token}`,

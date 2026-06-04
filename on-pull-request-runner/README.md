@@ -79,7 +79,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 |---------|-------|-----------|
 | Inline review comments on changed lines | yes | no |
 | Summary PR comment | yes | no |
-| Stacked remediation PR | no | yes |
+| Stacked remediation PR | no | yes (with audit-style body + inline comments) |
 | Integrations telemetry | yes | yes |
 | `fail-on-findings` | yes | no |
 | Fork PR push | n/a | skipped |
