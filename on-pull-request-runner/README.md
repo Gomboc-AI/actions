@@ -69,6 +69,10 @@ steps:
 
 Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_TOKEN` is still required for rules pull and Integrations.
 
+**When no remediation PR is opened:** the action copies ORL-modified files from the isolated batch workspace back into your checkout. If ORL reports `fixes=0` and `changes=0` (common with exit code 2 — findings remain), there is nothing to commit. Check the job log for `ORL report totals: findings=…, fixes=…, changes=…` and the `Open remediation PR` step output.
+
+**“CI&CD” or other PR labels:** those come from the Gomboc Integrations backend when `post-integrations` runs with `effect: SubmitForReview`. That step runs in both audit and remediate mode and is unrelated to opening a stacked remediation PR.
+
 ## Supported features
 
 | Feature | Audit | Remediate |

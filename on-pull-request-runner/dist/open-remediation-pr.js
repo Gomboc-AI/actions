@@ -9,10 +9,25 @@ import { gitAddAll, gitCheckoutBranch, gitCommit, gitPush, gitStatusPorcelain, }
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { requireEnv } from './lib/env.js';
+import { totalsFromBatchReports } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';
 function loadBatches() {
     const raw = JSON.parse(fs.readFileSync(artifactPath('evaluation-batches.json'), 'utf8'));
     return raw.batches;
+}
+function loadBatchReports() {
+    const batches = loadBatches();
+    const out = [];
+    for (const batch of batches) {
+        const reportPath = artifactPath(`batches/${batch.batchId}/report.yaml`);
+        if (!fs.existsSync(reportPath))
+            continue;
+        out.push({
+            batchId: batch.batchId,
+            report: yaml.parse(fs.readFileSync(reportPath, 'utf8')),
+        });
+    }
+    return out;
 }
 function loadBatchReport(batchId) {
     const reportPath = artifactPath(`batches/${batchId}/report.yaml`);
@@ -58,16 +73,31 @@ async function main() {
     const workspaceRoot = requireEnv('GITHUB_WORKSPACE');
     const batchWorkRoot = artifactPath('orl-workspace');
     const batches = loadBatches();
-    const { copiedPaths } = applyOrlFixes({
+    const batchReports = loadBatchReports();
+    const reportTotals = totalsFromBatchReports(batchReports.map(({ report }) => ({ report })));
+    const { copiedPaths, skippedUnchanged, skippedMissing } = applyOrlFixes({
         batchWorkRoot,
         workspaceRoot,
         batches,
         reportForBatch: loadBatchReport,
         stagedFilesForBatch: loadStagedFiles,
     });
-    console.log(copiedPaths.length
-        ? `Applied ORL fixes for ${copiedPaths.length} path(s): ${copiedPaths.join(', ')}`
-        : 'No remediated files copied from batch workspaces');
+    console.log(`ORL report totals: findings=${reportTotals.findings}, fixes=${reportTotals.fixes}, changes=${reportTotals.changes}`);
+    if (copiedPaths.length) {
+        console.log(`Applied ORL fixes for ${copiedPaths.length} path(s): ${copiedPaths.join(', ')}`);
+    }
+    else {
+        console.log('No remediated files copied from batch workspaces');
+        if (reportTotals.fixes === 0 && reportTotals.changes === 0) {
+            console.log('ORL did not apply any fixes to the staged workspace (findings may remain). No remediation PR will be opened.');
+        }
+        if (skippedUnchanged.length) {
+            console.log(`${skippedUnchanged.length} staged path(s) unchanged vs checkout: ${skippedUnchanged.slice(0, 10).join(', ')}${skippedUnchanged.length > 10 ? '…' : ''}`);
+        }
+        if (skippedMissing.length) {
+            console.log(`${skippedMissing.length} candidate path(s) missing in batch workspace: ${skippedMissing.slice(0, 10).join(', ')}${skippedMissing.length > 10 ? '…' : ''}`);
+        }
+    }
     const status = gitStatusPorcelain(workspaceRoot);
     if (!status.trim()) {
         console.log('No ORL fixes to commit (working tree clean)');

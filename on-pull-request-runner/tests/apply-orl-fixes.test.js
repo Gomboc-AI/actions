@@ -6,10 +6,11 @@ import path from 'node:path';
 import {
   applyOrlFixes,
   pathsFromReport,
+  pathsWithChangesFromReport,
 } from '../dist/lib/apply-orl-fixes.js';
 
 describe('apply-orl-fixes', () => {
-  it('collects paths from report files_changed and paths_with_findings', () => {
+  it('collects paths from report files_changed and paths_with_findings (legacy)', () => {
     const paths = pathsFromReport({
       metadata: { name: 'r' },
       spec: {
@@ -29,6 +30,31 @@ describe('apply-orl-fixes', () => {
     });
 
     assert.deepEqual(paths, ['infra/main.tf', 'k8s/deployment.yaml']);
+  });
+
+  it('pathsWithChangesFromReport uses files_changed and joins workspace-relative paths', () => {
+    const paths = pathsWithChangesFromReport(
+      {
+        metadata: { name: 'r' },
+        spec: {
+          rules_applied: 1,
+          findings: 1,
+          fixes: 1,
+          changes: 1,
+          rules: [
+            {
+              name: 'orl-rule:a',
+              files_changed: { 'main.tf': {} },
+              paths_with_findings: { 'other.tf': {} },
+            },
+          ],
+          errors: [],
+        },
+      },
+      'deploy/terraform'
+    );
+
+    assert.deepEqual(paths, ['deploy/terraform/main.tf']);
   });
 
   it('copies remediated files from batch work dirs to checkout', () => {
@@ -85,6 +111,57 @@ describe('apply-orl-fixes', () => {
     );
   });
 
+  it('copies via staged manifest when report only lists workspace-relative paths_with_findings', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orl-fix-'));
+    const workspaceRoot = path.join(root, 'checkout');
+    const batchWorkRoot = path.join(root, 'batches');
+    fs.mkdirSync(workspaceRoot, { recursive: true });
+
+    const batchId = 'batch-0';
+    const workDir = path.join(batchWorkRoot, batchId);
+    fs.mkdirSync(path.join(workDir, 'infra'), { recursive: true });
+    fs.writeFileSync(path.join(workDir, 'infra/main.tf'), 'fixed tf\n');
+    fs.mkdirSync(path.join(workspaceRoot, 'infra'), { recursive: true });
+    fs.writeFileSync(path.join(workspaceRoot, 'infra/main.tf'), 'broken tf\n');
+
+    const result = applyOrlFixes({
+      batchWorkRoot,
+      workspaceRoot,
+      batches: [
+        {
+          batchId,
+          workspacePath: 'infra',
+          orlLanguage: 'terraform',
+          files: ['infra/main.tf'],
+        },
+      ],
+      reportForBatch: () => ({
+        metadata: { name: 'r' },
+        spec: {
+          rules_applied: 1,
+          findings: 5,
+          fixes: 0,
+          changes: 0,
+          rules: [
+            {
+              name: 'orl-rule:tf',
+              findings: 5,
+              paths_with_findings: { 'main.tf': {} },
+            },
+          ],
+          errors: [],
+        },
+      }),
+      stagedFilesForBatch: () => ['infra/main.tf'],
+    });
+
+    assert.deepEqual(result.copiedPaths, ['infra/main.tf']);
+    assert.equal(
+      fs.readFileSync(path.join(workspaceRoot, 'infra/main.tf'), 'utf8'),
+      'fixed tf\n'
+    );
+  });
+
   it('falls back to staged-files manifest when report has no paths', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orl-fix-'));
     const workspaceRoot = path.join(root, 'checkout');
@@ -116,5 +193,36 @@ describe('apply-orl-fixes', () => {
       fs.readFileSync(path.join(workspaceRoot, 'template.json'), 'utf8'),
       '{"fixed":true}'
     );
+  });
+
+  it('skips unchanged files', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'orl-fix-'));
+    const workspaceRoot = path.join(root, 'checkout');
+    const batchWorkRoot = path.join(root, 'batches');
+    fs.mkdirSync(workspaceRoot, { recursive: true });
+
+    const batchId = 'batch-2';
+    const workDir = path.join(batchWorkRoot, batchId);
+    fs.mkdirSync(workDir, { recursive: true });
+    fs.writeFileSync(path.join(workDir, 'same.txt'), 'identical');
+    fs.writeFileSync(path.join(workspaceRoot, 'same.txt'), 'identical');
+
+    const result = applyOrlFixes({
+      batchWorkRoot,
+      workspaceRoot,
+      batches: [
+        {
+          batchId,
+          workspacePath: '.',
+          orlLanguage: 'text',
+          files: ['same.txt'],
+        },
+      ],
+      reportForBatch: () => null,
+      stagedFilesForBatch: () => ['same.txt'],
+    });
+
+    assert.deepEqual(result.copiedPaths, []);
+    assert.deepEqual(result.skippedUnchanged, ['same.txt']);
   });
 });
