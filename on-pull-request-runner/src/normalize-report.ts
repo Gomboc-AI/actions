@@ -4,8 +4,9 @@
 import fs from 'node:fs';
 import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
+import { totalsFromReport } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';
-import type { OrlReport, OrlReportRule } from './types.js';
+import type { OrlReport } from './types.js';
 
 const DROP_ANNOTATION_KEYS = [
   'example',
@@ -33,31 +34,9 @@ function filterAnnotations(
   return Object.keys(out).length ? out : undefined;
 }
 
-function normalizeRule(rule: OrlReportRule): {
-  findings: number;
-  fixes: number;
-  changes?: number;
-} {
-  return {
-    findings: rule.findings ?? 0,
-    fixes: rule.fixes ?? 0,
-  };
-}
-
-/**
- * Produces Integrations-friendly JSON: totals, trimmed metadata, empty rules array.
- * Rule-level detail remains in `merged-report.yaml` artifacts.
- */
 export function normalizeOrlReport(report: OrlReport): Record<string, unknown> {
   const spec = report.spec;
-  let totalFindings = 0;
-  let totalFixes = 0;
-
-  for (const rule of spec.rules ?? []) {
-    const n = normalizeRule(rule);
-    totalFindings += n.findings;
-    totalFixes += n.fixes;
-  }
+  const totals = totalsFromReport(report);
 
   return {
     type: 'Report',
@@ -70,9 +49,9 @@ export function normalizeOrlReport(report: OrlReport): Record<string, unknown> {
     workspace: spec.workspace ?? '.',
     language: spec.language ?? 'unknown',
     rules_applied: spec.rules_applied ?? spec.rules?.length ?? 0,
-    findings: spec.findings ?? totalFindings,
-    fixes: spec.fixes ?? totalFixes,
-    changes: spec.changes ?? 0,
+    findings: totals.findings,
+    fixes: totals.fixes,
+    changes: totals.changes,
     rules: [],
     errors: spec.errors ?? [],
   };

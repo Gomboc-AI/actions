@@ -25,6 +25,7 @@ export type OrlReportRule = {
   name: string;
   findings?: number;
   fixes?: number;
+  changes?: number;
   files?: Array<{ path: string }>;
   paths_with_findings?: Record<string, unknown>;
   files_changed?: Record<string, unknown>;

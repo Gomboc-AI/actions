@@ -10,6 +10,7 @@ import { formatScoreCell, ruleImpactRisk, } from './lib/rule-metadata.js';
 import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
+import { countRuleFindings, totalsFromBatchReports, totalsFromReport, } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';
 function loadJson(file) {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -46,7 +47,7 @@ function collectRulesWithFindings(batchReports) {
     const rules = [];
     for (const { report } of batchReports) {
         for (const rule of report.spec?.rules ?? []) {
-            if ((rule.findings ?? 0) > 0)
+            if (countRuleFindings(rule) > 0)
                 rules.push(rule);
         }
     }
@@ -110,7 +111,7 @@ function formatSummaryBody(args) {
         for (const rule of rules) {
             const { impact, risk } = ruleImpactRisk(rule);
             const name = rule.metadata?.display_name ?? rule.name;
-            lines.push(`| ${name} | ${formatScoreCell(impact)} | ${formatScoreCell(risk)} | ${rule.findings ?? 0} |`);
+            lines.push(`| ${name} | ${formatScoreCell(impact)} | ${formatScoreCell(risk)} | ${countRuleFindings(rule)} |`);
         }
     }
     if (workflowUrl) {
@@ -237,13 +238,23 @@ async function main() {
     });
     const maxComments = envInt('INPUT_COMMENT_MAX_PER_PR', 50);
     const portalServiceUrl = (process.env.INPUT_PORTAL_SERVICE_URL?.trim() || 'https://app.gomboc.ai').replace(/\/+$/, '');
-    const totalFindings = normalized.findings ?? 0;
+    const reportTotals = totalsFromBatchReports(batchReports);
+    const totalFindings = Math.max(normalized.findings ?? 0, reportTotals.findings);
+    const totalFixes = Math.max(normalized.fixes ?? 0, reportTotals.fixes);
+    const totalChanges = Math.max(normalized.changes ?? 0, reportTotals.changes);
     const unanchored = Math.max(0, totalFindings - candidates.length);
     const scanCompleted = batchReports.length > 0;
     for (const { batchId, report } of batchReports) {
-        console.log(`Batch ${batchId}: findings=${report.spec?.findings ?? 0}, rules=${report.spec?.rules?.length ?? 0}`);
+        const batchTotals = totalsFromReport(report);
+        console.log(`Batch ${batchId}: spec.findings=${report.spec?.findings ?? 0}, computed.findings=${batchTotals.findings}, rules=${report.spec?.rules?.length ?? 0}, rules_applied=${report.spec?.rules_applied ?? 0}`);
+        for (const rule of report.spec?.rules ?? []) {
+            const n = countRuleFindings(rule);
+            if (n <= 0)
+                continue;
+            console.log(`  ${rule.name}: findings=${n}, finding_locations=${rule.finding_locations?.length ?? 0}, paths=${Object.keys(rule.paths_with_findings ?? {}).length}`);
+        }
     }
-    console.log(`Inline comment planning: findings=${totalFindings}, candidates=${candidates.length}, scannable=${scannable.length}`);
+    console.log(`Inline comment planning: normalized.findings=${normalized.findings ?? 0}, report.findings=${reportTotals.findings}, candidates=${candidates.length}, scannable=${scannable.length}`);
     const { posted, skipped, postedCommentIds, activeDedupeKeys } = await postInlineComments({
         github,
         owner,
@@ -265,9 +276,9 @@ async function main() {
         scanCompleted,
     });
     const summaryBody = formatSummaryBody({
-        findings: normalized.findings ?? 0,
-        fixes: normalized.fixes ?? 0,
-        changes: normalized.changes ?? 0,
+        findings: totalFindings,
+        fixes: totalFixes,
+        changes: totalChanges,
         posted,
         skipped,
         unanchored,
@@ -285,10 +296,8 @@ async function main() {
     });
     console.log(`Audit comments: ${posted} inline posted, ${skipped} skipped, ${removed} stale removed, ${candidates.length} candidates`);
     if (envBool('INPUT_FAIL_ON_FINDINGS', false)) {
-        const findings = normalized.findings ?? 0;
-        const changes = normalized.changes ?? 0;
-        if (findings > 0 || changes > 0) {
-            throw new Error(`fail-on-findings: policy violations detected (findings=${findings}, changes=${changes})`);
+        if (totalFindings > 0 || totalChanges > 0) {
+            throw new Error(`fail-on-findings: policy violations detected (findings=${totalFindings}, changes=${totalChanges})`);
         }
     }
 }

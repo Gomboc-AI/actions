@@ -1,3 +1,4 @@
+import { countRuleFindings } from './report-counts.js';
 function emptyReport() {
     return {
         metadata: { name: 'merged', display_name: 'Gomboc ORL (merged)' },
@@ -33,10 +34,18 @@ export function mergeBatchResults(results) {
         if (!r.report?.spec)
             continue;
         const spec = r.report.spec;
+        let fromRules = 0;
+        let fromRuleFixes = 0;
+        let fromRuleChanges = 0;
+        for (const rule of spec.rules ?? []) {
+            fromRules += countRuleFindings(rule);
+            fromRuleFixes += rule.fixes ?? 0;
+            fromRuleChanges += rule.changes ?? 0;
+        }
         merged.spec.rules_applied += spec.rules_applied ?? 0;
-        merged.spec.findings += spec.findings ?? 0;
-        merged.spec.fixes += spec.fixes ?? 0;
-        merged.spec.changes += spec.changes ?? 0;
+        merged.spec.findings += Math.max(spec.findings ?? 0, fromRules);
+        merged.spec.fixes += Math.max(spec.fixes ?? 0, fromRuleFixes);
+        merged.spec.changes += Math.max(spec.changes ?? 0, fromRuleChanges);
         if (spec.rules?.length) {
             merged.spec.rules.push(...spec.rules);
         }

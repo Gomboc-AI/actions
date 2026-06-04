@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
+import { totalsFromReport } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';
 const DROP_ANNOTATION_KEYS = [
     'example',
@@ -29,25 +30,9 @@ function filterAnnotations(annotations) {
     }
     return Object.keys(out).length ? out : undefined;
 }
-function normalizeRule(rule) {
-    return {
-        findings: rule.findings ?? 0,
-        fixes: rule.fixes ?? 0,
-    };
-}
-/**
- * Produces Integrations-friendly JSON: totals, trimmed metadata, empty rules array.
- * Rule-level detail remains in `merged-report.yaml` artifacts.
- */
 export function normalizeOrlReport(report) {
     const spec = report.spec;
-    let totalFindings = 0;
-    let totalFixes = 0;
-    for (const rule of spec.rules ?? []) {
-        const n = normalizeRule(rule);
-        totalFindings += n.findings;
-        totalFixes += n.fixes;
-    }
+    const totals = totalsFromReport(report);
     return {
         type: 'Report',
         version: 'v1',
@@ -59,9 +44,9 @@ export function normalizeOrlReport(report) {
         workspace: spec.workspace ?? '.',
         language: spec.language ?? 'unknown',
         rules_applied: spec.rules_applied ?? spec.rules?.length ?? 0,
-        findings: spec.findings ?? totalFindings,
-        fixes: spec.fixes ?? totalFixes,
-        changes: spec.changes ?? 0,
+        findings: totals.findings,
+        fixes: totals.fixes,
+        changes: totals.changes,
         rules: [],
         errors: spec.errors ?? [],
     };

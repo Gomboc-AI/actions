@@ -3,6 +3,27 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizeRepoPath } from './paths.js';
+function filesToStage(batch, workspaceRoot) {
+    const staged = new Set(batch.files.map(normalizeRepoPath));
+    for (const file of batch.files) {
+        const normalized = normalizeRepoPath(file);
+        const dir = path.posix.dirname(normalized);
+        const absDir = path.join(workspaceRoot, dir === '.' ? '' : dir);
+        try {
+            for (const name of fs.readdirSync(absDir)) {
+                if (!name.endsWith('.tf'))
+                    continue;
+                const repoPath = dir === '.' ? name : `${dir}/${name}`;
+                staged.add(normalizeRepoPath(repoPath));
+            }
+        }
+        catch {
+            /* directory may not exist */
+        }
+    }
+    return [...staged].sort();
+}
 /**
  * Builds a Docker-mounted work directory for a single evaluation batch.
  *
@@ -12,7 +33,8 @@ export function stageBatchWorkspace(args) {
     const { batch, workspaceRoot, hooksDir, batchWorkRoot } = args;
     const workDir = path.join(batchWorkRoot, batch.batchId);
     fs.mkdirSync(path.join(workDir, '.orl', 'hooks'), { recursive: true });
-    for (const file of batch.files) {
+    const files = filesToStage(batch, workspaceRoot);
+    for (const file of files) {
         const src = path.join(workspaceRoot, file);
         const dest = path.join(workDir, file);
         fs.mkdirSync(path.dirname(dest), { recursive: true });

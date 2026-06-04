@@ -14,6 +14,7 @@ import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-repor
 import { formatScoreCell, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
 import { portalRuleUrl } from './portal-url.js';
 import { resolveScannablePath } from './scannable-path.js';
+import { countRuleFindings } from './report-counts.js';
 
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
 
@@ -276,7 +277,7 @@ function tryLegacyPaths(args: {
   const out: AnchorAttempt[] = [];
   const pathEntries = pathsFromRule(rule);
 
-  if (pathEntries.length === 0 && (rule.findings ?? 0) > 0) {
+  if (pathEntries.length === 0 && countRuleFindings(rule) > 0) {
     for (const dr of diagnostics?.rules ?? []) {
       if (dr.ruleName && dr.ruleName !== rule.name) continue;
       for (const file of dr.files ?? []) {
@@ -323,7 +324,7 @@ export function extractAuditCommentCandidates(
     const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
 
     for (const rule of report.spec?.rules ?? []) {
-      if ((rule.findings ?? 0) <= 0 && !(rule.finding_locations?.length ?? 0)) {
+      if (countRuleFindings(rule) <= 0 && !(rule.finding_locations?.length ?? 0)) {
         if (pathsFromRule(rule).length === 0) continue;
       }
 

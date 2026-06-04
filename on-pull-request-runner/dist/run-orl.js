@@ -9,6 +9,7 @@ import { mapPool } from './lib/concurrency.js';
 import { currentUidGid, dockerRun } from './lib/docker.js';
 import { envInt } from './lib/env.js';
 import { mergeBatchResults } from './lib/merge-orl-results.js';
+import { countRuleFindings, totalsFromReport } from './lib/report-counts.js';
 import { appendStepSummary } from './lib/github-output.js';
 import { stageBatchWorkspace } from './lib/stage-workspace.js';
 import { runMain } from './lib/runner.js';
@@ -48,6 +49,7 @@ async function runBatch(args) {
             '/workspace/.orl/hooks',
             '--rulespace',
             '/workspace/rules',
+            '--recursive-rulespace',
             '--language',
             batch.orlLanguage,
             '--out',
@@ -124,10 +126,21 @@ async function main() {
     summary += `| Workspace | Language | Findings | Fixes | Changes |\n`;
     summary += `|-----------|----------|----------|-------|----------|\n`;
     for (const r of results) {
-        const f = r.report?.spec?.findings ?? 0;
-        const fx = r.report?.spec?.fixes ?? 0;
-        const c = r.report?.spec?.changes ?? 0;
+        const t = totalsFromReport(r.report);
+        const f = t.findings;
+        const fx = t.fixes;
+        const c = t.changes;
         summary += `| ${r.workspacePath} | ${r.orlLanguage} | ${f} | ${fx} | ${c} |\n`;
+        console.log(`Batch ${r.batchId}: exit=${r.exitCode}, spec.findings=${r.report?.spec?.findings ?? 'n/a'}, computed.findings=${f}, rules_applied=${r.report?.spec?.rules_applied ?? 0}, report=${r.report ? 'yes' : 'no'}`);
+        for (const rule of r.report?.spec?.rules ?? []) {
+            const n = countRuleFindings(rule);
+            if (n <= 0)
+                continue;
+            console.log(`  ${rule.name}: findings=${n}`);
+        }
+        if (r.exitCode !== 0 && r.error) {
+            console.warn(`Batch ${r.batchId} stderr/stdout: ${r.error.slice(0, 500)}`);
+        }
     }
     summary += `\n**Totals:** findings=${outcome.mergedReport.spec.findings}, fixes=${outcome.mergedReport.spec.fixes}, changes=${outcome.mergedReport.spec.changes}\n`;
     if (outcome.warnings.length) {
