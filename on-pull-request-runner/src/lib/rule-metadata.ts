@@ -96,3 +96,14 @@ export function ruleDescription(rule: OrlReportRule): string | undefined {
 export function formatScoreCell(value: string | undefined): string {
   return value?.trim() ? value.trim() : '—';
 }
+
+export function formatScoreLabel(value: string | undefined): string {
+  const cell = formatScoreCell(value);
+  return cell === '—' ? cell : cell.toUpperCase();
+}
+
+/** Uppercase score wrapped in backticks for markdown tables and headings. */
+export function formatScoreMarkdown(value: string | undefined): string {
+  const label = formatScoreLabel(value);
+  return label === '—' ? label : `\`${label}\``;
+}

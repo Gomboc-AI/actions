@@ -6,7 +6,8 @@ import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
 import { AUDIT_COMMENT_MARKER, extractAuditCommentCandidates, formatInlineCommentBody, isAuditCommentBody, parseAuditCommentDedupeKey, } from './lib/extract-audit-comments.js';
 import { envBool, envInt, requireEnv } from './lib/env.js';
-import { formatScoreCell, ruleImpactRisk, } from './lib/rule-metadata.js';
+import { formatScoreMarkdown, ruleImpactRisk, } from './lib/rule-metadata.js';
+import { formatRuleDisplayLink } from './lib/portal-url.js';
 import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
@@ -77,7 +78,7 @@ function buildDiffChangedLinesMap(args) {
     return map;
 }
 function formatSummaryBody(args) {
-    const { findings, fixes, changes, posted, skipped, unanchored, candidates, batchesEvaluated, rules, workflowUrl, notices, } = args;
+    const { findings, fixes, changes, posted, skipped, unanchored, candidates, batchesEvaluated, rules, workflowUrl, portalServiceUrl, notices, } = args;
     const lines = [AUDIT_COMMENT_MARKER, '## Gomboc Assessment Results', ''];
     lines.push(...formatActionNoticesSection(notices));
     const suppressMetrics = hasErrorNotices(notices) || hasAuthFailureNotices(notices);
@@ -113,8 +114,12 @@ function formatSummaryBody(args) {
         lines.push('|------|--------|------|----------|');
         for (const rule of rules) {
             const { impact, risk } = ruleImpactRisk(rule);
-            const name = rule.metadata?.display_name ?? rule.name;
-            lines.push(`| ${name} | ${formatScoreCell(impact)} | ${formatScoreCell(risk)} | ${countRuleFindings(rule)} |`);
+            const name = formatRuleDisplayLink({
+                displayName: rule.metadata?.display_name ?? rule.name,
+                ruleName: rule.name,
+                portalBaseUrl: portalServiceUrl,
+            });
+            lines.push(`| ${name} | ${formatScoreMarkdown(impact)} | ${formatScoreMarkdown(risk)} | ${countRuleFindings(rule)} |`);
         }
     }
     if (workflowUrl) {
@@ -289,6 +294,7 @@ async function main() {
         batchesEvaluated: batchReports.length,
         rules: collectRulesWithFindings(batchReports),
         workflowUrl: workflowRunUrl(),
+        portalServiceUrl,
         notices: loadActionNotices(),
     });
     await upsertSummaryComment({

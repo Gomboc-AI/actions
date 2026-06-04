@@ -28,3 +28,14 @@ export function portalRuleUrl(args: PortalRuleUrlArgs): string {
     .map((segment) => encodeURIComponent(segment));
   return `${base}/data-library/rules/${segments.join('/')}`;
 }
+
+export function formatRuleDisplayLink(args: {
+  displayName: string;
+  ruleName: string;
+  portalBaseUrl?: string;
+}): string {
+  const base = args.portalBaseUrl?.trim();
+  if (!base) return args.displayName;
+  const href = portalRuleUrl({ portalBaseUrl: base, ruleName: args.ruleName });
+  return `[${args.displayName}](${href})`;
+}

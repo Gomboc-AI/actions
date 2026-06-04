@@ -71,4 +71,13 @@ export function ruleDescription(rule) {
 export function formatScoreCell(value) {
     return value?.trim() ? value.trim() : '—';
 }
+export function formatScoreLabel(value) {
+    const cell = formatScoreCell(value);
+    return cell === '—' ? cell : cell.toUpperCase();
+}
+/** Uppercase score wrapped in backticks for markdown tables and headings. */
+export function formatScoreMarkdown(value) {
+    const label = formatScoreLabel(value);
+    return label === '—' ? label : `\`${label}\``;
+}
 //# sourceMappingURL=rule-metadata.js.map

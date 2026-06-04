@@ -21,4 +21,11 @@ export function portalRuleUrl(args) {
         .map((segment) => encodeURIComponent(segment));
     return `${base}/data-library/rules/${segments.join('/')}`;
 }
+export function formatRuleDisplayLink(args) {
+    const base = args.portalBaseUrl?.trim();
+    if (!base)
+        return args.displayName;
+    const href = portalRuleUrl({ portalBaseUrl: base, ruleName: args.ruleName });
+    return `[${args.displayName}](${href})`;
+}
 //# sourceMappingURL=portal-url.js.map

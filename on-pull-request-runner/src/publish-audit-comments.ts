@@ -15,9 +15,10 @@ import {
 } from './lib/extract-audit-comments.js';
 import { envBool, envInt, requireEnv } from './lib/env.js';
 import {
-  formatScoreCell,
+  formatScoreMarkdown,
   ruleImpactRisk,
 } from './lib/rule-metadata.js';
+import { formatRuleDisplayLink } from './lib/portal-url.js';
 import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
@@ -134,6 +135,7 @@ function formatSummaryBody(args: {
   batchesEvaluated: number;
   rules: OrlReportRule[];
   workflowUrl: string | null;
+  portalServiceUrl: string;
   notices: ActionNotice[];
 }): string {
   const {
@@ -147,6 +149,7 @@ function formatSummaryBody(args: {
     batchesEvaluated,
     rules,
     workflowUrl,
+    portalServiceUrl,
     notices,
   } = args;
 
@@ -209,9 +212,13 @@ function formatSummaryBody(args: {
     lines.push('|------|--------|------|----------|');
     for (const rule of rules) {
       const { impact, risk } = ruleImpactRisk(rule);
-      const name = rule.metadata?.display_name ?? rule.name;
+      const name = formatRuleDisplayLink({
+        displayName: rule.metadata?.display_name ?? rule.name,
+        ruleName: rule.name,
+        portalBaseUrl: portalServiceUrl,
+      });
       lines.push(
-        `| ${name} | ${formatScoreCell(impact)} | ${formatScoreCell(risk)} | ${countRuleFindings(rule)} |`
+        `| ${name} | ${formatScoreMarkdown(impact)} | ${formatScoreMarkdown(risk)} | ${countRuleFindings(rule)} |`
       );
     }
   }
@@ -475,6 +482,7 @@ async function main(): Promise<void> {
     batchesEvaluated: batchReports.length,
     rules: collectRulesWithFindings(batchReports),
     workflowUrl: workflowRunUrl(),
+    portalServiceUrl,
     notices: loadActionNotices(),
   });
 

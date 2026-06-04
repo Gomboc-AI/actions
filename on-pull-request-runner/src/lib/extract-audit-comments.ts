@@ -11,7 +11,7 @@ import type {
   OrlReportRule,
 } from '../types.js';
 import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-report-path.js';
-import { formatScoreCell, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
+import { formatScoreLabel, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
 import { portalRuleUrl } from './portal-url.js';
 import { resolveScannablePath } from './scannable-path.js';
 import { countRuleFindings } from './report-counts.js';
@@ -368,11 +368,6 @@ export function extractAuditCommentCandidates(
 export type FormatInlineCommentOptions = {
   portalServiceUrl?: string;
 };
-
-function formatScoreLabel(score: string | undefined): string {
-  const cell = formatScoreCell(score);
-  return cell === '—' ? cell : cell.toUpperCase();
-}
 
 function formatSeverityRiskAccordion(args: {
   label: 'Severity' | 'Risk';
