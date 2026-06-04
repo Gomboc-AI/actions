@@ -30,7 +30,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: gomboc-ai/actions/on-pull-request-runner@v1
+      - uses: gomboc-ai/actions/on-pull-request-runner@DEV-4567
         with:
           mode: audit
         env:
@@ -77,7 +77,7 @@ See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 ### Blocking on findings
 
 ```yaml
-- uses: gomboc-ai/actions/on-pull-request-runner@v1
+- uses: gomboc-ai/actions/on-pull-request-runner@DEV-4567
   with:
     mode: audit
     fail-on-findings: true

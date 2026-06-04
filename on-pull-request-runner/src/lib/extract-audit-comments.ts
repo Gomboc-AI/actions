@@ -383,9 +383,13 @@ function formatSeverityRiskSection(args: {
   return ['', title, '', statement];
 }
 
-/** Removes a leading `## Description` heading from rule metadata text. */
+/** Removes a leading `## Description` heading and demotes other `##` headings to `####`. */
 export function stripDescriptionHeading(description: string): string {
-  return description.trim().replace(/^##\s+Description\s*\n*/i, '').trim();
+  const withoutDescription = description
+    .trim()
+    .replace(/^##\s+Description\s*\n*/i, '')
+    .trim();
+  return withoutDescription.replace(/(^|\n)## (?![#])/gm, '$1#### ');
 }
 
 function formatDescriptionWithReadMore(args: {

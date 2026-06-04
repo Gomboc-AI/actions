@@ -110,6 +110,28 @@ describe('extract-audit-comments', () => {
     assert.match(body, /### Risk: `MEDIUM`\n\nThis disables object-level ACLs\./);
   });
 
+  it('demotes remaining ## headings to #### in rule description', () => {
+    const candidate = {
+      dedupeKey: 'k',
+      ruleName: 'gomboc-ai/some-rule',
+      displayName: 'Some rule',
+      description:
+        '## Description\n\nMain text.\n\n## Impact\n\nLarge blast radius.',
+      impact: 'high',
+      impactStatement: 'Simplifies access control.',
+      risk: 'medium',
+      riskStatement: 'This disables object-level ACLs.',
+      filePath: 'main.tf',
+      line: 12,
+    };
+
+    const body = formatInlineCommentBody(candidate);
+
+    assert.match(body, /Main text\.\n\n#### Impact\n\nLarge blast radius\./);
+    assert.doesNotMatch(body, /^## Impact/m);
+    assert.doesNotMatch(body, /## Description/);
+  });
+
   it('anchors findings from files_changed line on PR-scannable paths', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
