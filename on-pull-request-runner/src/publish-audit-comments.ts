@@ -17,6 +17,7 @@ import { envBool, envInt, requireEnv } from './lib/env.js';
 import {
   formatScoreMarkdown,
   ruleImpactRisk,
+  sortRulesByImpactRisk,
 } from './lib/rule-metadata.js';
 import { formatRuleDisplayLink } from './lib/portal-url.js';
 import { gitDiffChangedLines } from './lib/git-diff-lines.js';
@@ -94,7 +95,7 @@ function collectRulesWithFindings(
       if (countRuleFindings(rule) > 0) rules.push(rule);
     }
   }
-  return rules;
+  return sortRulesByImpactRisk(rules);
 }
 
 function workflowRunUrl(): string | null {

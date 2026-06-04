@@ -107,3 +107,43 @@ export function formatScoreMarkdown(value: string | undefined): string {
   const label = formatScoreLabel(value);
   return label === '—' ? label : `\`${label}\``;
 }
+
+const SCORE_RANK: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  moderate: 2,
+  low: 1,
+  informational: 0,
+  info: 0,
+  none: 0,
+};
+
+function scoreRank(value: string | undefined, missingRank: number): number {
+  const key = value?.trim().toLowerCase();
+  if (!key) return missingRank;
+  return SCORE_RANK[key] ?? missingRank;
+}
+
+/** Impact descending (HIGH first), then risk ascending (LOW first). */
+export function compareRulesByImpactRisk(a: OrlReportRule, b: OrlReportRule): number {
+  const impactA = ruleImpactRisk(a).impact;
+  const impactB = ruleImpactRisk(b).impact;
+  const impactDelta = scoreRank(impactB, -1) - scoreRank(impactA, -1);
+  if (impactDelta !== 0) return impactDelta;
+
+  const riskA = ruleImpactRisk(a).risk;
+  const riskB = ruleImpactRisk(b).risk;
+  const riskDelta =
+    scoreRank(riskA, Number.MAX_SAFE_INTEGER) -
+    scoreRank(riskB, Number.MAX_SAFE_INTEGER);
+  if (riskDelta !== 0) return riskDelta;
+
+  const nameA = a.metadata?.display_name ?? a.name ?? '';
+  const nameB = b.metadata?.display_name ?? b.name ?? '';
+  return nameA.localeCompare(nameB);
+}
+
+export function sortRulesByImpactRisk(rules: OrlReportRule[]): OrlReportRule[] {
+  return [...rules].sort(compareRulesByImpactRisk);
+}

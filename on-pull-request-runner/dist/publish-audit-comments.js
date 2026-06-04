@@ -6,7 +6,7 @@ import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
 import { AUDIT_COMMENT_MARKER, extractAuditCommentCandidates, formatInlineCommentBody, isAuditCommentBody, parseAuditCommentDedupeKey, } from './lib/extract-audit-comments.js';
 import { envBool, envInt, requireEnv } from './lib/env.js';
-import { formatScoreMarkdown, ruleImpactRisk, } from './lib/rule-metadata.js';
+import { formatScoreMarkdown, ruleImpactRisk, sortRulesByImpactRisk, } from './lib/rule-metadata.js';
 import { formatRuleDisplayLink } from './lib/portal-url.js';
 import { gitDiffChangedLines } from './lib/git-diff-lines.js';
 import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
@@ -53,7 +53,7 @@ function collectRulesWithFindings(batchReports) {
                 rules.push(rule);
         }
     }
-    return rules;
+    return sortRulesByImpactRisk(rules);
 }
 function workflowRunUrl() {
     const server = process.env.GITHUB_SERVER_URL;

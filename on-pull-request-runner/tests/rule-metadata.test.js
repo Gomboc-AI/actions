@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import {
   formatScoreMarkdown,
   ruleImpactRisk,
+  sortRulesByImpactRisk,
 } from '../dist/lib/rule-metadata.js';
 import { formatRuleDisplayLink } from '../dist/lib/portal-url.js';
 
@@ -31,6 +32,31 @@ describe('rule-metadata', () => {
     assert.equal(formatScoreMarkdown('high'), '`HIGH`');
     assert.equal(formatScoreMarkdown('medium'), '`MEDIUM`');
     assert.equal(formatScoreMarkdown(undefined), '—');
+  });
+
+  it('sorts rules by impact descending then risk ascending', () => {
+    const rule = (name, impact, risk) => ({
+      name,
+      findings: 1,
+      metadata: {
+        annotations: {
+          'gomboc-ai/impact/score': impact,
+          'gomboc-ai/risk/score': risk,
+        },
+      },
+    });
+
+    const sorted = sortRulesByImpactRisk([
+      rule('low-impact', 'low', 'high'),
+      rule('high-high-risk', 'high', 'high'),
+      rule('high-low-risk', 'high', 'low'),
+      rule('medium', 'medium', 'medium'),
+    ]);
+
+    assert.deepEqual(
+      sorted.map((r) => r.name),
+      ['high-low-risk', 'high-high-risk', 'medium', 'low-impact']
+    );
   });
 });
 
