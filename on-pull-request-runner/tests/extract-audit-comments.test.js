@@ -67,15 +67,17 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].risk, 'medium');
     const body = formatInlineCommentBody(candidates[0]);
     assert.match(body, /### Ensure uniform bucket-level access/);
+    assert.match(body, /<details>/);
     assert.match(body, /### Severity: `HIGH`/);
     assert.match(body, /### Risk: `MEDIUM`/);
     assert.match(body, /IAM-based permissions/);
     assert.match(body, /lose access/);
     assert.doesNotMatch(body, /<table>/);
-    assert.ok(body.indexOf('### Ensure uniform') < body.indexOf('### Severity'));
+    assert.doesNotMatch(body, /\[Read more\]/);
+    assert.ok(body.indexOf('### Ensure uniform') < body.indexOf('<details>'));
   });
 
-  it('links rule name to portal ruleset page', () => {
+  it('appends inline Read more link to rule description', () => {
     const candidate = {
       dedupeKey: 'k',
       ruleName:
@@ -83,7 +85,10 @@ describe('extract-audit-comments', () => {
       displayName: 'Ensure Storage Bucket uniform bucket-level access is enabled',
       description:
         '## Description\n\nEnables uniform bucket-level access for GCP Storage Buckets.',
+      impact: 'high',
+      impactStatement: 'Simplifies access control.',
       risk: 'medium',
+      riskStatement: 'This disables object-level ACLs.',
       filePath: 'main.tf',
       line: 12,
     };
@@ -94,12 +99,12 @@ describe('extract-audit-comments', () => {
 
     assert.match(
       body,
-      /\[gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001\]\(https:\/\/app\.gomboc\.ai\/data-library\/rules\/gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled\)/
+      /Enables uniform bucket-level access for GCP Storage Buckets\. \[Read more\]\(https:\/\/app\.gomboc\.ai\/data-library\/rules\/gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled\)/
     );
     assert.match(body, /### Ensure Storage Bucket uniform bucket-level access is enabled/);
-    assert.match(body, /Enables uniform bucket-level access for GCP Storage Buckets/);
     assert.doesNotMatch(body, /## Description/);
-    assert.ok(body.indexOf('Enables uniform') < body.indexOf('### Severity'));
+    assert.doesNotMatch(body, /gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001\]/);
+    assert.ok(body.indexOf('[Read more]') < body.indexOf('<details>'));
   });
 
   it('anchors findings from files_changed line on PR-scannable paths', () => {

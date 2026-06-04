@@ -238,45 +238,68 @@ function formatScoreLabel(score) {
     const cell = formatScoreCell(score);
     return cell === '—' ? cell : cell.toUpperCase();
 }
-function formatSeverityRiskSection(args) {
-    const lines = [`### ${args.label}: \`${formatScoreLabel(args.score)}\``, ''];
-    if (args.statement?.trim()) {
-        lines.push(args.statement.trim(), '');
+function formatSeverityRiskAccordion(args) {
+    const title = `### ${args.label}: \`${formatScoreLabel(args.score)}\``;
+    const statement = args.statement?.trim();
+    if (!statement) {
+        return [title, ''];
     }
-    return lines;
+    return [
+        '<details>',
+        '',
+        '<summary>',
+        '',
+        title,
+        '',
+        '</summary>',
+        '',
+        statement,
+        '',
+        '</details>',
+        '',
+    ];
 }
 /** Removes a leading `## Description` heading from rule metadata text. */
 export function stripDescriptionHeading(description) {
     return description.trim().replace(/^##\s+Description\s*\n*/i, '').trim();
+}
+function formatDescriptionWithReadMore(args) {
+    const text = args.description.trim();
+    const portal = args.portalServiceUrl?.trim();
+    if (!text && !portal)
+        return null;
+    if (portal) {
+        const href = portalRuleUrl({
+            portalBaseUrl: portal,
+            ruleName: args.ruleName,
+        });
+        const readMore = `[Read more](${href})`;
+        return text ? `${text} ${readMore}` : readMore;
+    }
+    return text;
 }
 export function formatInlineCommentBody(candidate, options = {}) {
     const lines = [AUDIT_COMMENT_MARKER, `### ${candidate.displayName}`, ''];
     const description = candidate.description
         ? stripDescriptionHeading(candidate.description)
         : '';
-    if (description) {
-        lines.push(description, '');
+    const descriptionBlock = formatDescriptionWithReadMore({
+        description,
+        portalServiceUrl: options.portalServiceUrl,
+        ruleName: candidate.ruleName,
+    });
+    if (descriptionBlock) {
+        lines.push(descriptionBlock, '');
     }
-    lines.push(...formatSeverityRiskSection({
+    lines.push(...formatSeverityRiskAccordion({
         label: 'Severity',
         score: candidate.impact,
         statement: candidate.impactStatement,
-    }), ...formatSeverityRiskSection({
+    }), ...formatSeverityRiskAccordion({
         label: 'Risk',
         score: candidate.risk,
         statement: candidate.riskStatement,
     }));
-    const portalBase = options.portalServiceUrl?.trim();
-    if (portalBase) {
-        const href = portalRuleUrl({
-            portalBaseUrl: portalBase,
-            ruleName: candidate.ruleName,
-        });
-        lines.push(`[${candidate.ruleName}](${href})`);
-    }
-    else {
-        lines.push(`\`${candidate.ruleName}\``);
-    }
-    return lines.join('\n');
+    return lines.join('\n').trimEnd();
 }
 //# sourceMappingURL=extract-audit-comments.js.map
