@@ -100,7 +100,7 @@ runs:
     - name: Cache ORL Docker image
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       id: orl-docker-cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: /tmp/orl-image.tar
         key: docker-${{ steps.orl-image.outputs.ref }}
@@ -152,7 +152,7 @@ runs:
     - name: Cache rules
       if: steps.its-gomboc.outputs.its_gomboc == 'false'
       id: rules-cache
-      uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ${{ runner.temp }}/orl-rules
         key: orl-rules-${{ steps.orl-image.outputs.ref }}-${{ inputs.rules-service-url }}-${{ steps.resolve-channel.outputs.channel }}
