@@ -67,14 +67,14 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].risk, 'medium');
     const body = formatInlineCommentBody(candidates[0]);
     assert.match(body, /<!-- gomboc-orl-audit key=/);
-    assert.match(body, /<details>/);
     assert.match(body, /### Severity: `HIGH`/);
     assert.match(body, /### Risk: `MEDIUM`/);
     assert.match(body, /IAM-based permissions/);
     assert.match(body, /lose access/);
     assert.doesNotMatch(body, /<table>/);
+    assert.doesNotMatch(body, /<details>/);
     assert.doesNotMatch(body, /\[Read more\]/);
-    assert.ok(body.indexOf('### Ensure uniform') < body.indexOf('<details>'));
+    assert.ok(body.indexOf('### Ensure uniform') < body.indexOf('### Severity'));
   });
 
   it('appends inline Read more link to rule description', () => {
@@ -104,11 +104,10 @@ describe('extract-audit-comments', () => {
     assert.match(body, /### Ensure Storage Bucket uniform bucket-level access is enabled/);
     assert.doesNotMatch(body, /## Description/);
     assert.doesNotMatch(body, /gomboc-ai\/ensure-storage-bucket-uniform-bucket-level-access-is-enabled001\]/);
-    assert.ok(body.indexOf('[Read more]') < body.indexOf('<details>'));
-    assert.match(body, /<summary>\n### Severity: `HIGH`\n<\/summary>/);
-    assert.doesNotMatch(body, /<summary>###/);
-    assert.doesNotMatch(body, /\n\n<details>/);
-    assert.doesNotMatch(body, /<\/details>\n\n<details>/);
+    assert.ok(body.indexOf('[Read more]') < body.indexOf('### Severity'));
+    assert.doesNotMatch(body, /<details>/);
+    assert.match(body, /### Severity: `HIGH`\n\nSimplifies access control\./);
+    assert.match(body, /### Risk: `MEDIUM`\n\nThis disables object-level ACLs\./);
   });
 
   it('anchors findings from files_changed line on PR-scannable paths', () => {

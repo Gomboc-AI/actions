@@ -248,21 +248,13 @@ export function extractAuditCommentCandidates(args) {
     }
     return candidates;
 }
-function formatSeverityRiskAccordion(args) {
+function formatSeverityRiskSection(args) {
     const title = `### ${args.label}: \`${formatScoreLabel(args.score)}\``;
     const statement = args.statement?.trim();
     if (!statement) {
-        return [title];
+        return ['', title];
     }
-    return [
-        '<details>',
-        '<summary>',
-        title,
-        '</summary>',
-        '',
-        statement,
-        '</details>',
-    ];
+    return ['', title, '', statement];
 }
 /** Removes a leading `## Description` heading from rule metadata text. */
 export function stripDescriptionHeading(description) {
@@ -296,11 +288,11 @@ export function formatInlineCommentBody(candidate, options = {}) {
     if (descriptionBlock) {
         lines.push(descriptionBlock);
     }
-    lines.push(...formatSeverityRiskAccordion({
+    lines.push(...formatSeverityRiskSection({
         label: 'Severity',
         score: candidate.impact,
         statement: candidate.impactStatement,
-    }), ...formatSeverityRiskAccordion({
+    }), ...formatSeverityRiskSection({
         label: 'Risk',
         score: candidate.risk,
         statement: candidate.riskStatement,
