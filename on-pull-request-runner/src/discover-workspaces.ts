@@ -43,7 +43,7 @@ async function main(): Promise<void> {
     const containerOut = `/artifacts/detect-language-${i}.json`;
     const containerTarget = seed === '.' ? '/repo' : `/repo/${seed}`;
 
-    const { status, stderr } = dockerRun({
+    const { status, stderr } = await dockerRun({
       argv: [
         'run',
         '--rm',
