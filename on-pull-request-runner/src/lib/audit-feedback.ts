@@ -6,6 +6,7 @@ import yaml from 'yaml';
 import { artifactPath } from './artifacts.js';
 import {
   AUDIT_COMMENT_MARKER,
+  capAuditCommentCandidates,
   extractAuditCommentCandidates,
   formatInlineCommentBody,
   isAuditCommentBody,
@@ -443,7 +444,7 @@ export async function publishAuditFeedback(
     artifactPath('evaluation-batches.json')
   );
 
-  const candidates = extractAuditCommentCandidates({
+  const candidatesRaw = extractAuditCommentCandidates({
     batches,
     batchReports,
     batchDiagnostics,
@@ -455,6 +456,20 @@ export async function publishAuditFeedback(
   const totalFindings = Math.max(normalized.findings ?? 0, reportTotals.findings);
   const totalFixes = Math.max(normalized.fixes ?? 0, reportTotals.fixes);
   const totalChanges = Math.max(normalized.changes ?? 0, reportTotals.changes);
+
+  const allRules = batchReports.flatMap(({ report }) => report.spec?.rules ?? []);
+  const candidates = capAuditCommentCandidates({
+    candidates: candidatesRaw,
+    rules: allRules,
+    totalFindingsCap: totalFindings,
+  });
+
+  if (candidatesRaw.length !== candidates.length) {
+    console.log(
+      `Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report findings=${totalFindings})`
+    );
+  }
+
   const unanchored = Math.max(0, totalFindings - candidates.length);
   const scanCompleted = batchReports.length > 0;
 

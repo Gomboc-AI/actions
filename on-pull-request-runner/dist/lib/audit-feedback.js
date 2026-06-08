@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import yaml from 'yaml';
 import { artifactPath } from './artifacts.js';
-import { AUDIT_COMMENT_MARKER, extractAuditCommentCandidates, formatInlineCommentBody, isAuditCommentBody, parseAuditCommentDedupeKey, } from './extract-audit-comments.js';
+import { AUDIT_COMMENT_MARKER, capAuditCommentCandidates, extractAuditCommentCandidates, formatInlineCommentBody, isAuditCommentBody, parseAuditCommentDedupeKey, } from './extract-audit-comments.js';
 import { gitDiffChangedLines } from './git-diff-lines.js';
 import { formatScoreMarkdown, ruleImpactRisk, sortRulesByImpactRisk, } from './rule-metadata.js';
 import { formatRuleDisplayLink } from './portal-url.js';
@@ -228,7 +228,7 @@ export async function publishAuditFeedback(args) {
     const batchReports = loadBatchReportsWithWorkspace();
     const batchDiagnostics = loadBatchDiagnostics();
     const { batches } = loadJson(artifactPath('evaluation-batches.json'));
-    const candidates = extractAuditCommentCandidates({
+    const candidatesRaw = extractAuditCommentCandidates({
         batches,
         batchReports,
         batchDiagnostics,
@@ -239,6 +239,15 @@ export async function publishAuditFeedback(args) {
     const totalFindings = Math.max(normalized.findings ?? 0, reportTotals.findings);
     const totalFixes = Math.max(normalized.fixes ?? 0, reportTotals.fixes);
     const totalChanges = Math.max(normalized.changes ?? 0, reportTotals.changes);
+    const allRules = batchReports.flatMap(({ report }) => report.spec?.rules ?? []);
+    const candidates = capAuditCommentCandidates({
+        candidates: candidatesRaw,
+        rules: allRules,
+        totalFindingsCap: totalFindings,
+    });
+    if (candidatesRaw.length !== candidates.length) {
+        console.log(`Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report findings=${totalFindings})`);
+    }
     const unanchored = Math.max(0, totalFindings - candidates.length);
     const scanCompleted = batchReports.length > 0;
     console.log(`Inline comment planning: findings=${totalFindings}, candidates=${candidates.length}, scannable=${scannableFiles.length}`);

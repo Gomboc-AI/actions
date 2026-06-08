@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
+  capAuditCommentCandidates,
   extractAuditCommentCandidates,
   formatInlineCommentBody,
 } from '../dist/lib/extract-audit-comments.js';
@@ -454,6 +455,89 @@ describe('extract-audit-comments', () => {
     assert.equal(
       candidates[0].dedupeKey,
       'orl-rule:ec2-public-ip:deploy/terraform/aws/network-main.tf:10'
+    );
+  });
+
+  it('caps candidates to each rule finding count and report total', () => {
+    const rule = {
+      name: 'orl-rule:ec2-public-ip',
+      metadata: { name: 'orl-rule:ec2-public-ip' },
+      findings: 2,
+      finding_locations: [
+        {
+          id: 'f1',
+          resolved_location: {
+            id: 'l1',
+            file_path: 'network-main.tf',
+            start_line: 10,
+            start_column: 0,
+          },
+        },
+        {
+          id: 'f2',
+          resolved_location: {
+            id: 'l2',
+            file_path: 'network-main.tf',
+            start_line: 20,
+            start_column: 0,
+          },
+        },
+        {
+          id: 'f3',
+          resolved_location: {
+            id: 'l3',
+            file_path: 'network-main.tf',
+            start_line: 30,
+            start_column: 0,
+          },
+        },
+        {
+          id: 'f4',
+          resolved_location: {
+            id: 'l4',
+            file_path: 'network-main.tf',
+            start_line: 40,
+            start_column: 0,
+          },
+        },
+      ],
+    };
+
+    const raw = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: 'deploy/terraform/aws',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 2,
+              fixes: 0,
+              changes: 0,
+              rules: [rule],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['deploy/terraform/aws/network-main.tf']),
+    });
+
+    assert.equal(raw.length, 4);
+
+    const capped = capAuditCommentCandidates({
+      candidates: raw,
+      rules: [rule],
+      totalFindingsCap: 2,
+    });
+
+    assert.equal(capped.length, 2);
+    assert.deepEqual(
+      capped.map((c) => c.line),
+      [10, 20]
     );
   });
 });

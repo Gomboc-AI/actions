@@ -15,6 +15,7 @@ import { formatScoreLabel, ruleDescription, ruleImpactRisk } from './rule-metada
 import { portalRuleUrl } from './portal-url.js';
 import { resolveScannablePath } from './scannable-path.js';
 import { countRuleFindings } from './report-counts.js';
+import { compareRulesByImpactRisk } from './rule-metadata.js';
 
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
 
@@ -377,6 +378,56 @@ export function extractAuditCommentCandidates(
   }
 
   return candidates;
+}
+
+/**
+ * Limits inline comments to each rule's finding count (ORL may emit more
+ * `finding_locations` rows than `findings`). Optionally caps to report total.
+ */
+export function capAuditCommentCandidates(args: {
+  candidates: AuditCommentCandidate[];
+  rules: OrlReportRule[];
+  totalFindingsCap?: number;
+}): AuditCommentCandidate[] {
+  const { candidates, rules, totalFindingsCap } = args;
+  const rulesByName = new Map(rules.map((r) => [r.name, r]));
+
+  const sorted = [...candidates].sort((a, b) => {
+    const ruleA = rulesByName.get(a.ruleName);
+    const ruleB = rulesByName.get(b.ruleName);
+    if (ruleA && ruleB) {
+      const byRule = compareRulesByImpactRisk(ruleA, ruleB);
+      if (byRule !== 0) return byRule;
+    }
+    const pathCmp = a.filePath.localeCompare(b.filePath);
+    if (pathCmp !== 0) return pathCmp;
+    return a.line - b.line;
+  });
+
+  const perRulePosted = new Map<string, number>();
+  const capped: AuditCommentCandidate[] = [];
+
+  for (const candidate of sorted) {
+    const rule = rulesByName.get(candidate.ruleName);
+    const limit = rule ? countRuleFindings(rule) : 0;
+    if (limit <= 0) continue;
+
+    const posted = perRulePosted.get(candidate.ruleName) ?? 0;
+    if (posted >= limit) continue;
+
+    perRulePosted.set(candidate.ruleName, posted + 1);
+    capped.push(candidate);
+  }
+
+  if (
+    totalFindingsCap != null &&
+    totalFindingsCap > 0 &&
+    capped.length > totalFindingsCap
+  ) {
+    return capped.slice(0, totalFindingsCap);
+  }
+
+  return capped;
 }
 
 export type FormatInlineCommentOptions = {
