@@ -394,4 +394,66 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].line, 10);
     assert.equal(candidates[0].endLine, 15);
   });
+
+  it('does not duplicate comments when finding_locations and paths_with_findings overlap', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: 'deploy/terraform/aws',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 2,
+              fixes: 2,
+              changes: 2,
+              rules: [
+                {
+                  name: 'orl-rule:ec2-public-ip',
+                  metadata: { name: 'orl-rule:ec2-public-ip' },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'network-main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                    {
+                      id: 'f2',
+                      resolved_location: {
+                        id: 'l2',
+                        file_path: 'network-main.tf',
+                        start_line: 20,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                  paths_with_findings: { 'network-main.tf': { line: 10 } },
+                  files_changed: { 'network-main.tf': { line: 10 } },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['deploy/terraform/aws/network-main.tf']),
+      diffChangedLines: new Map([
+        ['deploy/terraform/aws/network-main.tf', [10, 20]],
+      ]),
+    });
+
+    assert.equal(candidates.length, 2);
+    assert.equal(
+      candidates[0].dedupeKey,
+      'orl-rule:ec2-public-ip:deploy/terraform/aws/network-main.tf:10'
+    );
+  });
 });

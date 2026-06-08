@@ -234,6 +234,15 @@ type AnchorAttempt = {
   dedupeKey: string;
 };
 
+/** One inline comment per rule × file × line (ignores finding row id). */
+export function canonicalAnchorDedupeKey(
+  ruleName: string,
+  scannablePath: string,
+  line: number
+): string {
+  return `${ruleName}:${scannablePath}:${line}`;
+}
+
 function tryFindingLocationRows(args: {
   rule: OrlReportRule;
   workspacePath: string;
@@ -259,7 +268,7 @@ function tryFindingLocationRows(args: {
     out.push({
       scannablePath,
       anchor,
-      dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}:${row.id}`,
+      dedupeKey: canonicalAnchorDedupeKey(rule.name, scannablePath, anchor.line),
     });
   }
 
@@ -305,7 +314,7 @@ function tryLegacyPaths(args: {
     out.push({
       scannablePath,
       anchor,
-      dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}`,
+      dedupeKey: canonicalAnchorDedupeKey(rule.name, scannablePath, anchor.line),
     });
   }
 
@@ -329,16 +338,21 @@ export function extractAuditCommentCandidates(
       }
 
       const meta = ruleMeta(rule);
-      const attempts = [
-        ...tryFindingLocationRows({ rule, workspacePath, prScannableFiles }),
-        ...tryLegacyPaths({
-          rule,
-          workspacePath,
-          diagnostics,
-          prScannableFiles,
-          diffChangedLines,
-        }),
-      ];
+      const locationRows = tryFindingLocationRows({
+        rule,
+        workspacePath,
+        prScannableFiles,
+      });
+      const attempts =
+        locationRows.length > 0
+          ? locationRows
+          : tryLegacyPaths({
+              rule,
+              workspacePath,
+              diagnostics,
+              prScannableFiles,
+              diffChangedLines,
+            });
 
       for (const attempt of attempts) {
         if (seen.has(attempt.dedupeKey)) continue;

@@ -140,6 +140,10 @@ function firstDiffLine(diffChangedLines, scannablePath) {
         return null;
     return lines[0];
 }
+/** One inline comment per rule × file × line (ignores finding row id). */
+export function canonicalAnchorDedupeKey(ruleName, scannablePath, line) {
+    return `${ruleName}:${scannablePath}:${line}`;
+}
 function tryFindingLocationRows(args) {
     const { rule, workspacePath, prScannableFiles } = args;
     const out = [];
@@ -160,7 +164,7 @@ function tryFindingLocationRows(args) {
         out.push({
             scannablePath,
             anchor,
-            dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}:${row.id}`,
+            dedupeKey: canonicalAnchorDedupeKey(rule.name, scannablePath, anchor.line),
         });
     }
     return out;
@@ -197,7 +201,7 @@ function tryLegacyPaths(args) {
         out.push({
             scannablePath,
             anchor,
-            dedupeKey: `${rule.name}:${scannablePath}:${anchor.line}`,
+            dedupeKey: canonicalAnchorDedupeKey(rule.name, scannablePath, anchor.line),
         });
     }
     return out;
@@ -215,16 +219,20 @@ export function extractAuditCommentCandidates(args) {
                     continue;
             }
             const meta = ruleMeta(rule);
-            const attempts = [
-                ...tryFindingLocationRows({ rule, workspacePath, prScannableFiles }),
-                ...tryLegacyPaths({
+            const locationRows = tryFindingLocationRows({
+                rule,
+                workspacePath,
+                prScannableFiles,
+            });
+            const attempts = locationRows.length > 0
+                ? locationRows
+                : tryLegacyPaths({
                     rule,
                     workspacePath,
                     diagnostics,
                     prScannableFiles,
                     diffChangedLines,
-                }),
-            ];
+                });
             for (const attempt of attempts) {
                 if (seen.has(attempt.dedupeKey))
                     continue;
