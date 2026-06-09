@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const channel = requireEnv('ORL_CHANNEL');
   const { uid, gid } = currentUidGid();
 
-  await dockerRunOrThrow({
+  dockerRunOrThrow({
     argv: [
       'run',
       '--rm',

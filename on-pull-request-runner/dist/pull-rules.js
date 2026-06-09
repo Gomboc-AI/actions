@@ -14,7 +14,7 @@ async function main() {
     const rulesUrl = requireEnv('RULES_SERVICE_URL');
     const channel = requireEnv('ORL_CHANNEL');
     const { uid, gid } = currentUidGid();
-    await dockerRunOrThrow({
+    dockerRunOrThrow({
         argv: [
             'run',
             '--rm',
