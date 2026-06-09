@@ -32,7 +32,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
 
-      - uses: gomboc-ai/actions/on-pull-request-runner@v1
+      - uses: gomboc-ai/actions/on-pull-request-runner@main
         with:
           mode: audit
         env:
@@ -57,7 +57,7 @@ steps:
       ref: ${{ github.event.pull_request.head.sha }}
       fetch-depth: 0
 
-  - uses: gomboc-ai/actions/on-pull-request-runner@v1
+  - uses: gomboc-ai/actions/on-pull-request-runner@main
     with:
       mode: remediate
       remediation-branch-prefix: gomboc/orl-remediation
@@ -116,7 +116,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 ### Blocking on findings (audit)
 
 ```yaml
-- uses: gomboc-ai/actions/on-pull-request-runner@v1
+- uses: gomboc-ai/actions/on-pull-request-runner@main
   with:
     mode: audit
     fail-on-findings: true

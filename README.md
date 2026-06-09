@@ -13,7 +13,7 @@
 ## ORL on pull requests (recommended)
 
 ```yaml
-- uses: gomboc-ai/actions/on-pull-request-runner@v1
+- uses: gomboc-ai/actions/on-pull-request-runner@main
   with:
     mode: audit
   env:
