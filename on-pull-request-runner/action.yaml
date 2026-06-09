@@ -16,7 +16,7 @@ inputs:
   orl-version:
     description: ORL Docker image tag (used when orl-image is empty)
     required: false
-    default: 'v1.3.7'
+    default: 'v1.3.9'
   orl-image:
     description: Full Docker image ref; overrides orl-version when set
     required: false
