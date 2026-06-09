@@ -26,7 +26,7 @@ async function main() {
         const outFile = artifactPath(`detect-language-${i}.json`);
         const containerOut = `/artifacts/detect-language-${i}.json`;
         const containerTarget = seed === '.' ? '/repo' : `/repo/${seed}`;
-        const { status, stderr } = dockerRun({
+        const { status, stderr } = await dockerRun({
             argv: [
                 'run',
                 '--rm',

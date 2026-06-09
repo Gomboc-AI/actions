@@ -33,7 +33,7 @@ async function runBatch(args) {
     });
     const reportHost = path.join(workDir, '.orl', 'report.yaml');
     const { uid, gid } = currentUidGid();
-    const { status, stderr, stdout } = dockerRun({
+    const { status, stderr, stdout } = await dockerRun({
         argv: [
             'run',
             '--rm',
@@ -57,6 +57,7 @@ async function runBatch(args) {
             '/workspace/.orl/report.yaml',
         ],
         timeoutMs,
+        containerName: `gomboc-orl-${batch.batchId}`,
     });
     let report = null;
     if (fs.existsSync(reportHost)) {

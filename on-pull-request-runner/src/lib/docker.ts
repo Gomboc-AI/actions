@@ -1,37 +1,108 @@
 /**
  * Docker CLI helpers for ORL image invocations.
  */
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 
 export type DockerRunArgs = {
   argv: string[];
   timeoutMs?: number;
+  /** When set, `docker run --name` is used and the container is killed on timeout. */
+  containerName?: string;
 };
+
+export type DockerRunResult = {
+  status: number;
+  stdout: string;
+  stderr: string;
+};
+
+const MAX_OUTPUT_BYTES = 50 * 1024 * 1024;
+
+function appendOutput(current: string, chunk: Buffer): string {
+  if (current.length >= MAX_OUTPUT_BYTES) return current;
+  const next = current + chunk.toString();
+  return next.length > MAX_OUTPUT_BYTES ? next.slice(0, MAX_OUTPUT_BYTES) : next;
+}
+
+function killContainer(name: string): void {
+  try {
+    execFileSync('docker', ['kill', name], { stdio: 'ignore' });
+  } catch {
+    // Container may already have exited.
+  }
+}
+
+function removeContainer(name: string): void {
+  try {
+    execFileSync('docker', ['rm', '-f', name], { stdio: 'ignore' });
+  } catch {
+    // Container may not exist.
+  }
+}
+
+function buildArgv(argv: string[], containerName?: string): string[] {
+  if (!containerName || argv[0] !== 'run') return argv;
+  return ['run', '--name', containerName, ...argv.slice(1)];
+}
 
 /**
  * Runs `docker` with the given args; does not throw on non-zero exit.
  */
-export function dockerRun(args: DockerRunArgs): {
-  status: number;
-  stdout: string;
-  stderr: string;
-} {
-  const { argv, timeoutMs } = args;
-  const result = spawnSync('docker', argv, {
-    encoding: 'utf8',
-    maxBuffer: 50 * 1024 * 1024,
-    timeout: timeoutMs,
+export function dockerRun(args: DockerRunArgs): Promise<DockerRunResult> {
+  const { argv, timeoutMs, containerName } = args;
+  if (containerName) {
+    removeContainer(containerName);
+  }
+
+  const finalArgv = buildArgv(argv, containerName);
+
+  return new Promise((resolve) => {
+    const child = spawn('docker', finalArgv, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    let timedOut = false;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+
+    const finish = (status: number): void => {
+      if (settled) return;
+      settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
+      resolve({ status, stdout, stderr });
+    };
+
+    child.stdout?.on('data', (chunk: Buffer) => {
+      stdout = appendOutput(stdout, chunk);
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      stderr = appendOutput(stderr, chunk);
+    });
+
+    if (timeoutMs !== undefined && timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        if (containerName) {
+          killContainer(containerName);
+        }
+        stderr += `\nTimed out after ${timeoutMs}ms`;
+        child.kill('SIGKILL');
+      }, timeoutMs);
+    }
+
+    child.on('close', (code) => {
+      finish(timedOut ? 1 : (code ?? 1));
+    });
+
+    child.on('error', (err) => {
+      stderr = appendOutput(stderr, Buffer.from(`${err.message}\n`));
+      finish(1);
+    });
   });
-  return {
-    status: result.status ?? 1,
-    stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
-  };
 }
 
 /** Like {@link dockerRun} but throws when exit status is non-zero. */
-export function dockerRunOrThrow(args: DockerRunArgs): void {
-  const { status, stderr, stdout } = dockerRun(args);
+export async function dockerRunOrThrow(args: DockerRunArgs): Promise<void> {
+  const { status, stderr, stdout } = await dockerRun(args);
   if (status !== 0) {
     throw new Error(`docker ${args.argv.join(' ')} failed (${status}): ${stderr || stdout}`);
   }
