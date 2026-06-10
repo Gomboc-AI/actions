@@ -2,8 +2,22 @@
 
 ![gomboc logo](assets/gomboc-logo.png)
 
-# <img src="assets/terraform-logo.png" style="margin-right:10px" width="24"/> Terraform Actions
+# Gomboc GitHub Actions
 
-## [/terraform/remediate](/terraform/remediate/)
+| Action | Description |
+|--------|-------------|
+| [`on-pull-request-runner/`](on-pull-request-runner/) | **ORL** on pull requests — rules pull, workspace discovery, audit scans, Integrations |
+| [`on-pull-request/`](on-pull-request/) | Legacy Gomboc CLI on `pull_request` (OIDC) |
+| [`on-schedule/`](on-schedule/) | Legacy Gomboc CLI on `schedule` |
 
-Remediate your Terraform code in GitHub
+## ORL on pull requests (recommended)
+
+```yaml
+- uses: gomboc-ai/actions/on-pull-request-runner@main
+  with:
+    mode: audit
+  env:
+    GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
+```
+
+See [on-pull-request-runner/README.md](on-pull-request-runner/README.md) for checkout requirements, permissions, and advanced inputs.

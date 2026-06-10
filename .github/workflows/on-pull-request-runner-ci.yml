@@ -1,0 +1,46 @@
+name: on-pull-request-runner CI
+
+on:
+  push:
+    paths:
+      - 'on-pull-request-runner/**'
+      - '.github/workflows/on-pull-request-runner-ci.yml'
+  pull_request:
+    paths:
+      - 'on-pull-request-runner/**'
+      - '.github/workflows/on-pull-request-runner-ci.yml'
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        working-directory: on-pull-request-runner
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: '24'
+          registry-url: https://npm.pkg.github.com
+          scope: '@gomboc-ai'
+
+      - name: Install dependencies
+        run: npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify gomboc-node-sdk resolves
+        run: node -e "import('@gomboc-ai/gomboc-node-sdk').then((m) => { if (typeof m.isOrlScannableLanguageFile !== 'function') throw new Error('missing SDK export'); })"
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+      - name: Verify dist is up to date
+        run: git diff --exit-code -- 'dist/**/*.js'

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "generatedAt": "2026-01-01T00:00:00Z",
+  "rules": [
+    {
+      "ruleName": "orl-rule:uniform-bucket-level-access",
+      "priority": 0,
+      "files": [
+        {
+          "path": "main.tf",
+          "hunks": [{ "startLine": 12, "lineCount": 3, "type": "modified" }],
+          "resources": [
+            {
+              "type": "aws_s3_bucket",
+              "name": "example",
+              "startLine": 10,
+              "endLine": 15
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

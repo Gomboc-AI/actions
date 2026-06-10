@@ -13,35 +13,23 @@ inputs:
     description: 'Internal use only'
     required: false
   effect:
-    description: "'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
+    description: "One of 'submit-for-review' or 'audit'. 'submit-for-review' will fail the job and create an additional PR with the remediations we have found for your submitted PR. 'audit' will allow the PR to pass the job even if there are findings available, however it will list any observations we can make."
     required: false
     default: 'submit-for-review'
-    enum:
-      - 'submit-for-review'
-      - 'audit'
   target-directory:
     description: "The directory that contains your IaC files"
     required: true
-    type: string
   iac:
-    description: "A space separated list with the IaC you want us to check"
+    description: "Space-separated IaC types to check. Allowed values: cloudformation, terraform"
     required: true
-    type: array
-    items:
-      type: string
-      enum:
-        - 'cloudformation'
-        - 'terraform'
   recurse:
-    description: "When set to true, Gomboc will check additional directories within the target-directory and try to remediate any IaC files found"
+    description: "When set to 'true', Gomboc will check additional directories within the target-directory and try to remediate any IaC files found"
     required: false
-    default: false
-    type: boolean
+    default: 'false'
   cli-version:
     description: "The specific CLI version you would like us to use"
     required: false
     default: '1.1.0'
-    type: string
 
 runs:
   using: "composite"
@@ -55,13 +43,13 @@ runs:
         exit 0
       shell: bash
 
-    - uses: actions/checkout@c85c95e3d7251135ab7dc9ce3241c5835cc595a9 # v3.5.3
+    - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       with:
         fetch-depth: 0
 
-    - uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610 # v3.9.1
+    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
       with:
-        node-version: 18.17.0
+        node-version: '24'
 
     - name: Get OIDC token 
       id: get-oidc-token
@@ -78,6 +66,6 @@ runs:
           -e GOMBOC_SERVER_URL=${{inputs.GOMBOC_SERVER_URL}} \
           -e GOMBOC_CLIENT_URL=${{inputs.GOMBOC_CLIENT_URL}} \
           gombocai/cli:${{ inputs.cli-version }} \
-          sh -c "gomboc ${{ inputs.effect }} on-schedule --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directory ${{ target-directory }} --iac ${{ inputs.iac }}"
+          sh -c "gomboc ${{ inputs.effect }} on-schedule --auth-token ${{ steps.get-oidc-token.outputs.ID_TOKEN }} --target-directory ${{ inputs['target-directory'] }} --iac ${{ inputs.iac }}"
 
       shell: bash
