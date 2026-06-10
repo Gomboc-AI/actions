@@ -8,7 +8,7 @@ import { applyOrlFixes } from './lib/apply-orl-fixes.js';
 import { artifactPath } from './lib/artifacts.js';
 import { envInt } from './lib/env.js';
 import { configureGitIdentity, gitAddAll, gitCheckoutBranch, gitCommit, gitDiffNameOnly, gitPush, gitRevParse, gitStatusPorcelain, } from './lib/git.js';
-import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
+import { GitHubClient, parseOwnerRepo } from './lib/clients/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { requireEnv } from './lib/env.js';
 import { totalsFromBatchReports } from './lib/report-counts.js';

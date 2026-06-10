@@ -1,7 +1,7 @@
 /**
  * Minimal GitHub REST API client for PR comments and future review APIs.
  */
-import { requireEnv } from './env.js';
+import { requireEnv } from '../env.js';
 const API_VERSION = '2022-11-28';
 /** Splits `owner/repo` from `GITHUB_REPOSITORY`. */
 export function parseOwnerRepo(repository) {

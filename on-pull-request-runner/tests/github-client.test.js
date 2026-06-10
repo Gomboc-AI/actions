@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { parseOwnerRepo } from '../dist/lib/github-client.js';
+import { parseOwnerRepo } from '../dist/lib/clients/github-client.js';
 
 test('parseOwnerRepo splits owner and repo', () => {
   assert.deepEqual(parseOwnerRepo('gomboc-ai/actions'), {

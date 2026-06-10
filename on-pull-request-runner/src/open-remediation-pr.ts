@@ -17,7 +17,7 @@ import {
   gitRevParse,
   gitStatusPorcelain,
 } from './lib/git.js';
-import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
+import { GitHubClient, parseOwnerRepo } from './lib/clients/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { requireEnv } from './lib/env.js';
 import { totalsFromBatchReports } from './lib/report-counts.js';

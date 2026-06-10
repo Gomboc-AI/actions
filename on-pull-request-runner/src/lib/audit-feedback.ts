@@ -15,7 +15,7 @@ import {
   type DiagnosticsShape,
 } from './extract-audit-comments.js';
 import { gitDiffChangedLines } from './git-diff-lines.js';
-import type { GitHubClient } from './github-client.js';
+import type { GitHubClient } from './clients/github-client.js';
 import {
   formatScoreMarkdown,
   ruleImpactRisk,

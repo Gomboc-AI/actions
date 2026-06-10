@@ -8,7 +8,7 @@ import {
   publishAuditFeedback,
 } from './lib/audit-feedback.js';
 import { envBool, envInt, requireEnv } from './lib/env.js';
-import { GitHubClient, parseOwnerRepo } from './lib/github-client.js';
+import { GitHubClient, parseOwnerRepo } from './lib/clients/github-client.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { totalsFromBatchReports } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';

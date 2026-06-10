@@ -7,15 +7,13 @@ import { appendActionNotice, integrationsErrorMessage, } from './lib/action-noti
 import { envBool } from './lib/env.js';
 import { appendStepSummary } from './lib/github-output.js';
 import { loadPullRequestContext } from './lib/github-context.js';
+import { IntegrationsApiError, IntegrationsClient, } from './lib/clients/integrations-client.js';
 import { runMain } from './lib/runner.js';
-import { requireEnv } from './lib/env.js';
 async function main() {
     if (!envBool('INPUT_INTEGRATIONS_ENABLED', true)) {
         console.log('Integrations disabled; skipping POST');
         return;
     }
-    const token = requireEnv('GOMBOC_ACCESS_TOKEN');
-    const baseUrl = requireEnv('INTEGRATIONS_SERVICE_URL').replace(/\/$/, '');
     const pr = loadPullRequestContext();
     const normalized = JSON.parse(fs.readFileSync(artifactPath('normalized-report.json'), 'utf8'));
     const batches = JSON.parse(fs.readFileSync(artifactPath('evaluation-batches.json'), 'utf8'));
@@ -39,34 +37,24 @@ async function main() {
         ],
         errors: [],
     };
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
+    const client = IntegrationsClient.fromEnv();
     try {
-        const res = await fetch(`${baseUrl}/reporting/orl-external`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${token}`,
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(body),
-            signal: controller.signal,
-        });
-        if (!res.ok) {
-            const text = await res.text();
-            const message = integrationsErrorMessage(res.status, text);
-            appendActionNotice({
-                level: res.status === 401 || res.status === 403 ? 'error' : 'warning',
-                source: 'integrations',
-                status: res.status,
-                message,
-            });
-            appendStepSummary(`### Integrations warning\n\nPOST failed (${res.status}): ${text.slice(0, 500)}\n`);
-            console.warn(`Integrations POST failed: ${res.status} ${text}`);
-            return;
-        }
+        await client.postOrlExternal(body);
         console.log('Integrations POST succeeded');
     }
     catch (err) {
+        if (err instanceof IntegrationsApiError) {
+            const message = integrationsErrorMessage(err.status, err.body);
+            appendActionNotice({
+                level: err.status === 401 || err.status === 403 ? 'error' : 'warning',
+                source: 'integrations',
+                status: err.status,
+                message,
+            });
+            appendStepSummary(`### Integrations warning\n\nPOST failed (${err.status}): ${err.body.slice(0, 500)}\n`);
+            console.warn(`Integrations POST failed: ${err.status} ${err.body}`);
+            return;
+        }
         const message = err instanceof Error ? err.message : String(err);
         appendActionNotice({
             level: 'warning',
@@ -75,9 +63,6 @@ async function main() {
         });
         appendStepSummary(`### Integrations warning\n\n${message}\n`);
         console.warn(`Integrations POST error: ${message}`);
-    }
-    finally {
-        clearTimeout(timeout);
     }
 }
 runMain(main);
