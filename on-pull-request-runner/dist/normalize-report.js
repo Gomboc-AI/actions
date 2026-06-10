@@ -33,14 +33,18 @@ function filterAnnotations(annotations) {
 export function normalizeOrlReport(report) {
     const spec = report.spec;
     const totals = totalsFromReport(report);
+    const displayName = report.metadata.display_name?.trim();
+    const metadata = {
+        name: report.metadata.name,
+        description: trimDescription(report.metadata.description),
+        ...(displayName
+            ? { annotations: { display_name: displayName } }
+            : {}),
+    };
     return {
         type: 'Report',
         version: 'v1',
-        metadata: {
-            name: report.metadata.name,
-            display_name: report.metadata.display_name,
-            description: trimDescription(report.metadata.description),
-        },
+        metadata,
         workspace: spec.workspace ?? '.',
         language: spec.language ?? 'unknown',
         rules_applied: spec.rules_applied ?? spec.rules?.length ?? 0,

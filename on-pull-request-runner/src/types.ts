@@ -1,6 +1,18 @@
 /**
  * Shared types for ORL reports, workspace discovery, and evaluation batches.
  */
+import type { CreateOrlReportEventRequestBody } from '@gomboc-ai/gomboc-node-sdk';
+
+/** ORL report payload accepted by Integrations `createOrlReportEvent`. */
+export type IntegrationsOrlReport = NonNullable<
+  NonNullable<CreateOrlReportEventRequestBody['reports'][number]>['orlReport']
+>;
+
+export type IntegrationsOrlReportGitHub = {
+  repository: string;
+  prNumber: number;
+  headSha: string;
+};
 
 /** File/line anchor in an ORL report (`Location` in report schema). */
 export type OrlLocation = {
