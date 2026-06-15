@@ -234,6 +234,7 @@ export async function publishAuditFeedback(args) {
         batchDiagnostics,
         prScannableFiles,
         diffChangedLines,
+        anchorStrategy: summaryTarget === 'pull_body' ? 'remediation' : 'audit',
     });
     const reportTotals = totalsFromBatchReports(batchReports);
     const totalFindings = Math.max(normalized.findings ?? 0, reportTotals.findings);

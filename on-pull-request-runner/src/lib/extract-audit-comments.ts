@@ -73,6 +73,11 @@ export type ExtractAuditCommentsArgs = {
   prScannableFiles: Set<string>;
   /** PR diff changed lines per scannable file (fallback when report has path but no line). */
   diffChangedLines?: Map<string, number[]>;
+  /**
+   * `audit`: anchor at ORL finding locations (original PR review).
+   * `remediation`: anchor each finding on a distinct line from the remediation PR diff.
+   */
+  anchorStrategy?: 'audit' | 'remediation';
 };
 
 function ruleMeta(rule: OrlReportRule): {
@@ -233,6 +238,7 @@ type AnchorAttempt = {
   scannablePath: string;
   anchor: { line: number; startLine?: number; endLine?: number };
   dedupeKey: string;
+  ruleName?: string;
 };
 
 /** One inline comment per rule × file × line (ignores finding row id). */
@@ -242,6 +248,218 @@ export function canonicalAnchorDedupeKey(
   line: number
 ): string {
   return `${ruleName}:${scannablePath}:${line}`;
+}
+
+/** One inline comment per finding on remediation PRs. */
+export function remediationFindingDedupeKey(
+  ruleName: string,
+  findingId: string,
+  scannablePath: string,
+  line: number
+): string {
+  return `${ruleName}:${findingId}:${scannablePath}:${line}`;
+}
+
+function preferredLineFromFindingRow(args: {
+  row: OrlFindingLocationRow;
+  rule: OrlReportRule;
+  workspacePath: string;
+  scannablePath: string;
+  diagnostics: DiagnosticsShape | null;
+}): number | null {
+  const loc = locationFromFindingRow(args.row);
+  const fromLoc = loc ? anchorFromLocation(loc)?.line : null;
+  if (fromLoc) return fromLoc;
+
+  for (const { path, entry } of pathsFromRule(args.rule)) {
+    const repoPath = reportPathToRepoPath({
+      reportPath: path,
+      workspacePath: args.workspacePath,
+    });
+    if (repoPath !== args.scannablePath) continue;
+    const fromEntry = lineFromReportEntry(entry)?.line;
+    if (fromEntry) return fromEntry;
+  }
+
+  const fromDiag = lineFromDiagnostics({
+    diagnostics: args.diagnostics,
+    ruleName: args.rule.name,
+    repoPath: args.scannablePath,
+  })?.line;
+  return fromDiag ?? null;
+}
+
+/**
+ * Maps each finding to a distinct changed line in the PR diff when possible.
+ * Exported for tests.
+ */
+export function assignRemediationAnchorLines(args: {
+  rows: OrlFindingLocationRow[];
+  changedLines: number[];
+  preferredLines: Array<number | null>;
+}): Array<number | null> {
+  const { rows, changedLines, preferredLines } = args;
+  if (!changedLines.length) {
+    return rows.map(() => null);
+  }
+
+  const sortedChanged = [...new Set(changedLines)].sort((a, b) => a - b);
+  const used = new Set<number>();
+  const order = rows
+    .map((row, index) => ({ index, preferred: preferredLines[index] ?? 0, id: row.id }))
+    .sort((a, b) => a.preferred - b.preferred || a.id.localeCompare(b.id));
+
+  const assigned: Array<number | null> = rows.map(() => null);
+
+  for (const { index, preferred } of order) {
+    let line: number | null = null;
+
+    if (preferred > 0 && sortedChanged.includes(preferred) && !used.has(preferred)) {
+      line = preferred;
+    } else if (preferred > 0) {
+      let bestDist = Number.POSITIVE_INFINITY;
+      for (const candidate of sortedChanged) {
+        if (used.has(candidate)) continue;
+        const dist = Math.abs(candidate - preferred);
+        if (dist < bestDist) {
+          bestDist = dist;
+          line = candidate;
+        }
+      }
+    }
+
+    if (line == null) {
+      line = sortedChanged.find((candidate) => !used.has(candidate)) ?? null;
+    }
+
+    if (line == null) {
+      line = sortedChanged.reduce((closest, candidate) => {
+        if (closest == null) return candidate;
+        const preferredDist = Math.abs(candidate - preferred);
+        const closestDist = Math.abs(closest - preferred);
+        return preferredDist < closestDist ? candidate : closest;
+      }, null as number | null);
+    }
+
+    if (line == null) continue;
+    assigned[index] = line;
+    used.add(line);
+  }
+
+  return assigned;
+}
+
+function tryRemediationFindingRows(args: {
+  rules: Array<{ rule: OrlReportRule; workspacePath: string; diagnostics: DiagnosticsShape | null }>;
+  prScannableFiles: Set<string>;
+  diffChangedLines?: Map<string, number[]>;
+}): AnchorAttempt[] {
+  const { rules, prScannableFiles, diffChangedLines } = args;
+
+  type RowContext = {
+    rule: OrlReportRule;
+    row: OrlFindingLocationRow;
+    scannablePath: string;
+    preferredLine: number | null;
+  };
+
+  const byFile = new Map<string, RowContext[]>();
+
+  for (const { rule, workspacePath, diagnostics } of rules) {
+    for (const row of rule.finding_locations ?? []) {
+      const loc = locationFromFindingRow(row);
+      if (!loc?.file_path) continue;
+
+      const repoPath = reportPathToRepoPath({
+        reportPath: loc.file_path,
+        workspacePath,
+      });
+      const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+      if (!scannablePath) continue;
+
+      const preferredLine = preferredLineFromFindingRow({
+        row,
+        rule,
+        workspacePath,
+        scannablePath,
+        diagnostics,
+      });
+
+      const bucket = byFile.get(scannablePath) ?? [];
+      bucket.push({ rule, row, scannablePath, preferredLine });
+      byFile.set(scannablePath, bucket);
+    }
+  }
+
+  const out: AnchorAttempt[] = [];
+
+  for (const [scannablePath, contexts] of byFile) {
+    const changedLines = diffChangedLines?.get(scannablePath) ?? [];
+    const assigned = assignRemediationAnchorLines({
+      rows: contexts.map((ctx) => ctx.row),
+      changedLines,
+      preferredLines: contexts.map((ctx) => ctx.preferredLine),
+    });
+
+    for (let i = 0; i < contexts.length; i++) {
+      const line = assigned[i];
+      if (line == null) continue;
+      const { rule, row } = contexts[i]!;
+      const findingId = row.id || `finding-${i}`;
+      out.push({
+        scannablePath,
+        anchor: { line, startLine: line },
+        dedupeKey: remediationFindingDedupeKey(rule.name, findingId, scannablePath, line),
+        ruleName: rule.name,
+      });
+    }
+  }
+
+  return out;
+}
+
+function snapLegacyAttemptsToDiff(args: {
+  ruleName: string;
+  attempts: AnchorAttempt[];
+  diffChangedLines?: Map<string, number[]>;
+}): AnchorAttempt[] {
+  const { ruleName, attempts, diffChangedLines } = args;
+  if (!diffChangedLines?.size) return attempts;
+
+  const byFile = new Map<string, AnchorAttempt[]>();
+  for (const attempt of attempts) {
+    const bucket = byFile.get(attempt.scannablePath) ?? [];
+    bucket.push(attempt);
+    byFile.set(attempt.scannablePath, bucket);
+  }
+
+  const out: AnchorAttempt[] = [];
+  for (const [scannablePath, fileAttempts] of byFile) {
+    const changedLines = diffChangedLines.get(scannablePath) ?? [];
+    const assigned = assignRemediationAnchorLines({
+      rows: fileAttempts.map((_, index) => ({ id: `legacy-${index}` })),
+      changedLines,
+      preferredLines: fileAttempts.map((attempt) => attempt.anchor.line),
+    });
+
+    for (let i = 0; i < fileAttempts.length; i++) {
+      const line = assigned[i];
+      const attempt = fileAttempts[i]!;
+      if (line == null) continue;
+      out.push({
+        ...attempt,
+        anchor: { line, startLine: line, endLine: attempt.anchor.endLine },
+        dedupeKey: remediationFindingDedupeKey(
+          ruleName,
+          `legacy-${i}`,
+          scannablePath,
+          line
+        ),
+      });
+    }
+  }
+
+  return out;
 }
 
 function tryFindingLocationRows(args: {
@@ -326,14 +544,106 @@ function tryLegacyPaths(args: {
 export function extractAuditCommentCandidates(
   args: ExtractAuditCommentsArgs
 ): AuditCommentCandidate[] {
-  const { batchReports, batchDiagnostics, prScannableFiles, diffChangedLines } = args;
+  const {
+    batchReports,
+    batchDiagnostics,
+    prScannableFiles,
+    diffChangedLines,
+    anchorStrategy = 'audit',
+  } = args;
   const seen = new Set<string>();
   const candidates: AuditCommentCandidate[] = [];
+  const rulesByName = new Map<string, OrlReportRule>();
 
   for (const { batchId, workspacePath, report } of batchReports) {
     const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
+    const batchRules = report.spec?.rules ?? [];
 
-    for (const rule of report.spec?.rules ?? []) {
+    for (const rule of batchRules) {
+      rulesByName.set(rule.name, rule);
+    }
+
+    if (anchorStrategy === 'remediation') {
+      const eligibleRules = batchRules.filter(
+        (rule) =>
+          (rule.finding_locations?.length ?? 0) > 0 ||
+          countRuleFindings(rule) > 0 ||
+          pathsFromRule(rule).length > 0
+      );
+
+      const remediationAttempts = tryRemediationFindingRows({
+        rules: eligibleRules
+          .filter((rule) => (rule.finding_locations?.length ?? 0) > 0)
+          .map((rule) => ({ rule, workspacePath, diagnostics })),
+        prScannableFiles,
+        diffChangedLines,
+      });
+
+      const remediationRulesWithAttempts = new Set(
+        remediationAttempts.map((attempt) => attempt.ruleName).filter(Boolean)
+      );
+
+      for (const attempt of remediationAttempts) {
+        const rule = rulesByName.get(attempt.ruleName ?? '');
+        if (!rule) continue;
+        if (seen.has(attempt.dedupeKey)) continue;
+        seen.add(attempt.dedupeKey);
+        const meta = ruleMeta(rule);
+        candidates.push({
+          dedupeKey: attempt.dedupeKey,
+          ruleName: rule.name,
+          displayName: meta.displayName,
+          description: meta.description,
+          impact: meta.impact,
+          impactStatement: meta.impactStatement,
+          risk: meta.risk,
+          riskStatement: meta.riskStatement,
+          filePath: attempt.scannablePath,
+          line: attempt.anchor.line,
+          startLine: attempt.anchor.startLine,
+          endLine: attempt.anchor.endLine,
+        });
+      }
+
+      for (const rule of eligibleRules) {
+        if (remediationRulesWithAttempts.has(rule.name)) continue;
+        const attempts = snapLegacyAttemptsToDiff({
+          ruleName: rule.name,
+          attempts: tryLegacyPaths({
+            rule,
+            workspacePath,
+            diagnostics,
+            prScannableFiles,
+            diffChangedLines,
+          }),
+          diffChangedLines,
+        });
+
+        for (const attempt of attempts) {
+          if (seen.has(attempt.dedupeKey)) continue;
+          seen.add(attempt.dedupeKey);
+          const meta = ruleMeta(rule);
+          candidates.push({
+            dedupeKey: attempt.dedupeKey,
+            ruleName: rule.name,
+            displayName: meta.displayName,
+            description: meta.description,
+            impact: meta.impact,
+            impactStatement: meta.impactStatement,
+            risk: meta.risk,
+            riskStatement: meta.riskStatement,
+            filePath: attempt.scannablePath,
+            line: attempt.anchor.line,
+            startLine: attempt.anchor.startLine,
+            endLine: attempt.anchor.endLine,
+          });
+        }
+      }
+
+      continue;
+    }
+
+    for (const rule of batchRules) {
       if (countRuleFindings(rule) <= 0 && !(rule.finding_locations?.length ?? 0)) {
         if (pathsFromRule(rule).length === 0) continue;
       }

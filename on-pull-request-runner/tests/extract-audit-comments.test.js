@@ -540,4 +540,89 @@ describe('extract-audit-comments', () => {
       [10, 20]
     );
   });
+
+  it('distributes remediation anchors across PR diff lines instead of stacking', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: 'deploy/terraform/aws',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 2,
+              findings: 4,
+              fixes: 4,
+              changes: 4,
+              rules: [
+                {
+                  name: 'orl-rule:a',
+                  metadata: { name: 'orl-rule:a' },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'a1',
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'network-main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                    {
+                      id: 'a2',
+                      resolved_location: {
+                        id: 'l2',
+                        file_path: 'network-main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                },
+                {
+                  name: 'orl-rule:b',
+                  metadata: { name: 'orl-rule:b' },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'b1',
+                      resolved_location: {
+                        id: 'l3',
+                        file_path: 'network-main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                    {
+                      id: 'b2',
+                      resolved_location: {
+                        id: 'l4',
+                        file_path: 'network-main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['deploy/terraform/aws/network-main.tf']),
+      diffChangedLines: new Map([
+        ['deploy/terraform/aws/network-main.tf', [40, 55, 70, 88]],
+      ]),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 4);
+    const lines = candidates.map((c) => c.line).sort((a, b) => a - b);
+    assert.deepEqual(lines, [40, 55, 70, 88]);
+    assert.equal(new Set(lines).size, 4);
+  });
 });

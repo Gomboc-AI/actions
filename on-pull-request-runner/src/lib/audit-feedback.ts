@@ -450,6 +450,7 @@ export async function publishAuditFeedback(
     batchDiagnostics,
     prScannableFiles,
     diffChangedLines,
+    anchorStrategy: summaryTarget === 'pull_body' ? 'remediation' : 'audit',
   });
 
   const reportTotals = totalsFromBatchReports(batchReports);
