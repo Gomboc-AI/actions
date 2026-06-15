@@ -1,0 +1,68 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { gitDiffChangedLines } from '../dist/lib/git-diff-lines.js';
+
+function git(args, cwd) {
+  execFileSync('git', args, { cwd, encoding: 'utf8' });
+}
+
+describe('git-diff-lines', () => {
+  it('collects each added line from multi-line hunks', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'git-diff-lines-'));
+    fs.writeFileSync(path.join(cwd, 'main.tf'), 'a\nb\nc\n');
+    git(['init'], cwd);
+    git(['add', 'main.tf'], cwd);
+    git(['commit', '-m', 'base'], cwd);
+
+    fs.writeFileSync(path.join(cwd, 'main.tf'), 'a\nb\nc\n  enable_x = true\n  enable_y = true\n');
+    git(['add', 'main.tf'], cwd);
+    git(['commit', '-m', 'fix'], cwd);
+
+    const baseSha = execFileSync('git', ['rev-parse', 'HEAD~1'], { cwd, encoding: 'utf8' }).trim();
+    const headSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+
+    const lines = gitDiffChangedLines({
+      baseSha,
+      headSha,
+      cwd,
+      filePath: 'main.tf',
+    });
+
+    assert.deepEqual(lines, [4, 5]);
+  });
+
+  it('collects lines from multiple hunks in one file', () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'git-diff-lines-multi-'));
+    fs.writeFileSync(
+      path.join(cwd, 'main.tf'),
+      'resource "a" {}\n\nresource "b" {}\n\nresource "c" {}\n'
+    );
+    git(['init'], cwd);
+    git(['add', 'main.tf'], cwd);
+    git(['commit', '-m', 'base'], cwd);
+
+    fs.writeFileSync(
+      path.join(cwd, 'main.tf'),
+      'resource "a" { x = 1 }\n\nresource "b" { y = 2 }\n\nresource "c" { z = 3 }\n'
+    );
+    git(['add', 'main.tf'], cwd);
+    git(['commit', '-m', 'fix'], cwd);
+
+    const baseSha = execFileSync('git', ['rev-parse', 'HEAD~1'], { cwd, encoding: 'utf8' }).trim();
+    const headSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd, encoding: 'utf8' }).trim();
+
+    const lines = gitDiffChangedLines({
+      baseSha,
+      headSha,
+      cwd,
+      filePath: 'main.tf',
+    });
+
+    assert.equal(lines.length, 3);
+    assert.deepEqual(lines, [1, 3, 5]);
+  });
+});

@@ -1,5 +1,5 @@
 /**
- * Parses `git diff` hunk headers to list new-side line numbers changed in a PR file.
+ * Parses `git diff` output to list new-side line numbers that were added or modified.
  */
 import { execFileSync } from 'node:child_process';
 
@@ -10,9 +10,12 @@ export type GitDiffChangedLinesArgs = {
   filePath: string;
 };
 
-const HUNK_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
+const HUNK_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
 
-/** Returns sorted unique 1-based line numbers on the PR head side that appear in the diff. */
+/**
+ * Returns sorted unique 1-based line numbers on the PR head side that were added (+)
+ * or context-changed in the diff. Walking hunks is more reliable than hunk spans alone.
+ */
 export function gitDiffChangedLines(args: GitDiffChangedLinesArgs): number[] {
   const { baseSha, headSha, cwd, filePath } = args;
   let out: string;
@@ -27,16 +30,30 @@ export function gitDiffChangedLines(args: GitDiffChangedLinesArgs): number[] {
   }
 
   const lines = new Set<number>();
+  let newLine = 0;
+
   for (const raw of out.split('\n')) {
-    const match = raw.match(HUNK_RE);
-    if (!match) continue;
-    const start = parseInt(match[1], 10);
-    const count = match[2] ? parseInt(match[2], 10) : 1;
-    if (!Number.isFinite(start) || start <= 0) continue;
-    const span = count > 0 ? count : 1;
-    for (let i = 0; i < span; i++) {
-      lines.add(start + i);
+    const hunk = raw.match(HUNK_RE);
+    if (hunk) {
+      newLine = parseInt(hunk[2]!, 10);
+      continue;
+    }
+    if (!raw || raw.startsWith('+++') || raw.startsWith('---') || raw.startsWith('diff ')) {
+      continue;
+    }
+    if (raw.startsWith('+')) {
+      if (newLine > 0) lines.add(newLine);
+      newLine++;
+      continue;
+    }
+    if (raw.startsWith(' ')) {
+      newLine++;
+      continue;
+    }
+    if (raw.startsWith('-')) {
+      continue;
     }
   }
+
   return [...lines].sort((a, b) => a - b);
 }

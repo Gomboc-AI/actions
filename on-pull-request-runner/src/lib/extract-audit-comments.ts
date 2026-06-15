@@ -188,17 +188,67 @@ function lineFromDiagnostics(args: {
 
       for (const h of file.hunks ?? []) {
         if (typeof h.startLine === 'number' && h.startLine > 0) {
-          return { line: h.startLine, startLine: h.startLine, endLine: h.endLine };
+          return {
+            line: h.startLine,
+            startLine: h.startLine,
+            endLine: typeof h.endLine === 'number' ? h.endLine : undefined,
+          };
         }
       }
       for (const r of file.resources ?? []) {
         if (typeof r.startLine === 'number' && r.startLine > 0) {
-          return { line: r.startLine, startLine: r.startLine, endLine: r.endLine };
+          return {
+            line: r.startLine,
+            startLine: r.startLine,
+            endLine: typeof r.endLine === 'number' ? r.endLine : undefined,
+          };
         }
       }
     }
   }
   return null;
+}
+
+/** All diagnostic hunk/resource start lines for a rule and file (fix locations). */
+export function linesFromDiagnostics(args: {
+  diagnostics: DiagnosticsShape | null;
+  ruleName: string;
+  repoPath: string;
+}): number[] {
+  const { diagnostics, ruleName, repoPath } = args;
+  if (!diagnostics?.rules?.length) return [];
+
+  const normalizedTarget = normalizeReportFilePath(repoPath);
+  const hunkLines: number[] = [];
+  const resourceLines: number[] = [];
+
+  for (const dr of diagnostics.rules) {
+    if (dr.ruleName && dr.ruleName !== ruleName) continue;
+    for (const file of dr.files ?? []) {
+      if (!file.path) continue;
+      if (normalizeReportFilePath(file.path) !== normalizedTarget) continue;
+
+      for (const h of file.hunks ?? []) {
+        if (typeof h.startLine === 'number' && h.startLine > 0) {
+          hunkLines.push(h.startLine);
+        }
+      }
+      for (const r of file.resources ?? []) {
+        if (typeof r.startLine === 'number' && r.startLine > 0) {
+          resourceLines.push(r.startLine);
+        }
+      }
+    }
+  }
+
+  const seen = new Set<number>();
+  const ordered: number[] = [];
+  for (const line of [...hunkLines, ...resourceLines]) {
+    if (seen.has(line)) continue;
+    seen.add(line);
+    ordered.push(line);
+  }
+  return ordered;
 }
 
 function pathsFromRule(rule: OrlReportRule): Array<{ path: string; entry: unknown }> {
@@ -254,10 +304,9 @@ export function canonicalAnchorDedupeKey(
 export function remediationFindingDedupeKey(
   ruleName: string,
   findingId: string,
-  scannablePath: string,
-  line: number
+  scannablePath: string
 ): string {
-  return `${ruleName}:${findingId}:${scannablePath}:${line}`;
+  return `${ruleName}:${findingId}:${scannablePath}`;
 }
 
 function preferredLineFromFindingRow(args: {
@@ -349,117 +398,183 @@ export function assignRemediationAnchorLines(args: {
   return assigned;
 }
 
-function tryRemediationFindingRows(args: {
-  rules: Array<{ rule: OrlReportRule; workspacePath: string; diagnostics: DiagnosticsShape | null }>;
-  prScannableFiles: Set<string>;
-  diffChangedLines?: Map<string, number[]>;
-}): AnchorAttempt[] {
-  const { rules, prScannableFiles, diffChangedLines } = args;
+function expandFindingRows(rule: OrlReportRule): OrlFindingLocationRow[] {
+  const target = countRuleFindings(rule);
+  if (target <= 0) return [];
 
-  type RowContext = {
-    rule: OrlReportRule;
-    row: OrlFindingLocationRow;
-    scannablePath: string;
-    preferredLine: number | null;
-  };
-
-  const byFile = new Map<string, RowContext[]>();
-
-  for (const { rule, workspacePath, diagnostics } of rules) {
-    for (const row of rule.finding_locations ?? []) {
-      const loc = locationFromFindingRow(row);
-      if (!loc?.file_path) continue;
-
-      const repoPath = reportPathToRepoPath({
-        reportPath: loc.file_path,
-        workspacePath,
-      });
-      const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-      if (!scannablePath) continue;
-
-      const preferredLine = preferredLineFromFindingRow({
-        row,
-        rule,
-        workspacePath,
-        scannablePath,
-        diagnostics,
-      });
-
-      const bucket = byFile.get(scannablePath) ?? [];
-      bucket.push({ rule, row, scannablePath, preferredLine });
-      byFile.set(scannablePath, bucket);
-    }
-  }
-
-  const out: AnchorAttempt[] = [];
-
-  for (const [scannablePath, contexts] of byFile) {
-    const changedLines = diffChangedLines?.get(scannablePath) ?? [];
-    const assigned = assignRemediationAnchorLines({
-      rows: contexts.map((ctx) => ctx.row),
-      changedLines,
-      preferredLines: contexts.map((ctx) => ctx.preferredLine),
-    });
-
-    for (let i = 0; i < contexts.length; i++) {
-      const line = assigned[i];
-      if (line == null) continue;
-      const { rule, row } = contexts[i]!;
-      const findingId = row.id || `finding-${i}`;
+  const rows = rule.finding_locations ?? [];
+  if (rows.length >= target) return rows.slice(0, target);
+  if (rows.length > 0) {
+    const out = [...rows];
+    while (out.length < target) {
+      const template = rows[out.length % rows.length]!;
       out.push({
-        scannablePath,
-        anchor: { line, startLine: line },
-        dedupeKey: remediationFindingDedupeKey(rule.name, findingId, scannablePath, line),
-        ruleName: rule.name,
+        ...template,
+        id: `${template.id ?? 'finding'}-extra-${out.length}`,
       });
     }
+    return out;
   }
 
-  return out;
+  return Array.from({ length: target }, (_, index) => ({
+    id: `${rule.name}-finding-${index}`,
+  }));
 }
 
-function snapLegacyAttemptsToDiff(args: {
-  ruleName: string;
-  attempts: AnchorAttempt[];
-  diffChangedLines?: Map<string, number[]>;
-}): AnchorAttempt[] {
-  const { ruleName, attempts, diffChangedLines } = args;
-  if (!diffChangedLines?.size) return attempts;
-
-  const byFile = new Map<string, AnchorAttempt[]>();
-  for (const attempt of attempts) {
-    const bucket = byFile.get(attempt.scannablePath) ?? [];
-    bucket.push(attempt);
-    byFile.set(attempt.scannablePath, bucket);
+function resolveLegacyScannablePath(args: {
+  rule: OrlReportRule;
+  workspacePath: string;
+  diagnostics: DiagnosticsShape | null;
+  prScannableFiles: Set<string>;
+}): { scannablePath: string; preferredLine: number | null } | null {
+  for (const attempt of tryLegacyPaths({
+    rule: args.rule,
+    workspacePath: args.workspacePath,
+    diagnostics: args.diagnostics,
+    prScannableFiles: args.prScannableFiles,
+  })) {
+    return {
+      scannablePath: attempt.scannablePath,
+      preferredLine: attempt.anchor.line,
+    };
   }
+  return null;
+}
 
-  const out: AnchorAttempt[] = [];
-  for (const [scannablePath, fileAttempts] of byFile) {
-    const changedLines = diffChangedLines.get(scannablePath) ?? [];
-    const assigned = assignRemediationAnchorLines({
-      rows: fileAttempts.map((_, index) => ({ id: `legacy-${index}` })),
-      changedLines,
-      preferredLines: fileAttempts.map((attempt) => attempt.anchor.line),
+type RemediationPending = {
+  rule: OrlReportRule;
+  findingId: string;
+  scannablePath: string;
+  preferredLine: number | null;
+};
+
+function collectRemediationPending(args: {
+  rules: OrlReportRule[];
+  workspacePath: string;
+  diagnostics: DiagnosticsShape | null;
+  prScannableFiles: Set<string>;
+}): RemediationPending[] {
+  const { rules, workspacePath, diagnostics, prScannableFiles } = args;
+  const pending: RemediationPending[] = [];
+
+  for (const rule of rules) {
+    const findingCount = countRuleFindings(rule);
+    if (findingCount <= 0) continue;
+
+    const legacyFallback = resolveLegacyScannablePath({
+      rule,
+      workspacePath,
+      diagnostics,
+      prScannableFiles,
     });
 
-    for (let i = 0; i < fileAttempts.length; i++) {
-      const line = assigned[i];
-      const attempt = fileAttempts[i]!;
-      if (line == null) continue;
-      out.push({
-        ...attempt,
-        anchor: { line, startLine: line, endLine: attempt.anchor.endLine },
-        dedupeKey: remediationFindingDedupeKey(
-          ruleName,
-          `legacy-${i}`,
+    for (const [index, row] of expandFindingRows(rule).entries()) {
+      const loc = locationFromFindingRow(row);
+      let scannablePath: string | null = null;
+      let preferredLine: number | null = null;
+
+      if (loc?.file_path) {
+        const repoPath = reportPathToRepoPath({
+          reportPath: loc.file_path,
+          workspacePath,
+        });
+        scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+        preferredLine = anchorFromLocation(loc)?.line ?? null;
+      }
+
+      if (!scannablePath && legacyFallback) {
+        scannablePath = legacyFallback.scannablePath;
+        preferredLine = legacyFallback.preferredLine;
+      }
+
+      if (!scannablePath) continue;
+
+      const diagnosticLines = linesFromDiagnostics({
+        diagnostics,
+        ruleName: rule.name,
+        repoPath: scannablePath,
+      });
+      if (diagnosticLines[index] != null) {
+        preferredLine = diagnosticLines[index]!;
+      } else if (diagnosticLines.length === 1) {
+        preferredLine = diagnosticLines[0]!;
+      }
+
+      if (preferredLine == null) {
+        preferredLine = preferredLineFromFindingRow({
+          row,
+          rule,
+          workspacePath,
           scannablePath,
-          line
-        ),
+          diagnostics,
+        });
+      }
+
+      pending.push({
+        rule,
+        findingId: row.id || `${rule.name}-finding-${index}`,
+        scannablePath,
+        preferredLine,
       });
     }
   }
 
-  return out;
+  return pending;
+}
+
+function buildRemediationCandidatesForBatch(args: {
+  rules: OrlReportRule[];
+  workspacePath: string;
+  diagnostics: DiagnosticsShape | null;
+  prScannableFiles: Set<string>;
+  diffChangedLines?: Map<string, number[]>;
+}): AuditCommentCandidate[] {
+  const pending = collectRemediationPending(args);
+  const byFile = new Map<string, RemediationPending[]>();
+
+  for (const item of pending) {
+    const bucket = byFile.get(item.scannablePath) ?? [];
+    bucket.push(item);
+    byFile.set(item.scannablePath, bucket);
+  }
+
+  const candidates: AuditCommentCandidate[] = [];
+
+  for (const [scannablePath, items] of byFile) {
+    const changedLines = args.diffChangedLines?.get(scannablePath) ?? [];
+    const assigned = assignRemediationAnchorLines({
+      rows: items.map((item) => ({ id: item.findingId })),
+      changedLines,
+      preferredLines: items.map((item) => item.preferredLine),
+    });
+
+    for (let i = 0; i < items.length; i++) {
+      const line = assigned[i];
+      const item = items[i]!;
+      if (line == null) continue;
+
+      const meta = ruleMeta(item.rule);
+      candidates.push({
+        dedupeKey: remediationFindingDedupeKey(
+          item.rule.name,
+          item.findingId,
+          scannablePath
+        ),
+        ruleName: item.rule.name,
+        displayName: meta.displayName,
+        description: meta.description,
+        impact: meta.impact,
+        impactStatement: meta.impactStatement,
+        risk: meta.risk,
+        riskStatement: meta.riskStatement,
+        filePath: scannablePath,
+        line,
+        startLine: line,
+      });
+    }
+  }
+
+  return candidates;
 }
 
 function tryFindingLocationRows(args: {
@@ -553,91 +668,29 @@ export function extractAuditCommentCandidates(
   } = args;
   const seen = new Set<string>();
   const candidates: AuditCommentCandidate[] = [];
-  const rulesByName = new Map<string, OrlReportRule>();
 
   for (const { batchId, workspacePath, report } of batchReports) {
     const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
     const batchRules = report.spec?.rules ?? [];
 
-    for (const rule of batchRules) {
-      rulesByName.set(rule.name, rule);
-    }
-
     if (anchorStrategy === 'remediation') {
       const eligibleRules = batchRules.filter(
         (rule) =>
-          (rule.finding_locations?.length ?? 0) > 0 ||
           countRuleFindings(rule) > 0 ||
+          (rule.finding_locations?.length ?? 0) > 0 ||
           pathsFromRule(rule).length > 0
       );
 
-      const remediationAttempts = tryRemediationFindingRows({
-        rules: eligibleRules
-          .filter((rule) => (rule.finding_locations?.length ?? 0) > 0)
-          .map((rule) => ({ rule, workspacePath, diagnostics })),
+      for (const candidate of buildRemediationCandidatesForBatch({
+        rules: eligibleRules,
+        workspacePath,
+        diagnostics,
         prScannableFiles,
         diffChangedLines,
-      });
-
-      const remediationRulesWithAttempts = new Set(
-        remediationAttempts.map((attempt) => attempt.ruleName).filter(Boolean)
-      );
-
-      for (const attempt of remediationAttempts) {
-        const rule = rulesByName.get(attempt.ruleName ?? '');
-        if (!rule) continue;
-        if (seen.has(attempt.dedupeKey)) continue;
-        seen.add(attempt.dedupeKey);
-        const meta = ruleMeta(rule);
-        candidates.push({
-          dedupeKey: attempt.dedupeKey,
-          ruleName: rule.name,
-          displayName: meta.displayName,
-          description: meta.description,
-          impact: meta.impact,
-          impactStatement: meta.impactStatement,
-          risk: meta.risk,
-          riskStatement: meta.riskStatement,
-          filePath: attempt.scannablePath,
-          line: attempt.anchor.line,
-          startLine: attempt.anchor.startLine,
-          endLine: attempt.anchor.endLine,
-        });
-      }
-
-      for (const rule of eligibleRules) {
-        if (remediationRulesWithAttempts.has(rule.name)) continue;
-        const attempts = snapLegacyAttemptsToDiff({
-          ruleName: rule.name,
-          attempts: tryLegacyPaths({
-            rule,
-            workspacePath,
-            diagnostics,
-            prScannableFiles,
-            diffChangedLines,
-          }),
-          diffChangedLines,
-        });
-
-        for (const attempt of attempts) {
-          if (seen.has(attempt.dedupeKey)) continue;
-          seen.add(attempt.dedupeKey);
-          const meta = ruleMeta(rule);
-          candidates.push({
-            dedupeKey: attempt.dedupeKey,
-            ruleName: rule.name,
-            displayName: meta.displayName,
-            description: meta.description,
-            impact: meta.impact,
-            impactStatement: meta.impactStatement,
-            risk: meta.risk,
-            riskStatement: meta.riskStatement,
-            filePath: attempt.scannablePath,
-            line: attempt.anchor.line,
-            startLine: attempt.anchor.startLine,
-            endLine: attempt.anchor.endLine,
-          });
-        }
+      })) {
+        if (seen.has(candidate.dedupeKey)) continue;
+        seen.add(candidate.dedupeKey);
+        candidates.push(candidate);
       }
 
       continue;

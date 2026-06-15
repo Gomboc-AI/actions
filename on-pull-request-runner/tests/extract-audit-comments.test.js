@@ -541,6 +541,46 @@ describe('extract-audit-comments', () => {
     );
   });
 
+  it('expands findings without finding_locations rows across diff lines', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 3,
+              fixes: 3,
+              changes: 3,
+              rules: [
+                {
+                  name: 'orl-rule:legacy-only',
+                  metadata: { name: 'orl-rule:legacy-only' },
+                  findings: 3,
+                  paths_with_findings: { 'main.tf': { line: 10 } },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      diffChangedLines: new Map([['main.tf', [40, 55, 70]]]),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 3);
+    assert.deepEqual(
+      candidates.map((c) => c.line).sort((a, b) => a - b),
+      [40, 55, 70]
+    );
+  });
+
   it('distributes remediation anchors across PR diff lines instead of stacking', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
