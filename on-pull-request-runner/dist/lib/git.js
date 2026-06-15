@@ -46,6 +46,12 @@ export function gitCheckoutBranch(branch, cwd) {
 export function gitAddAll(cwd) {
     git(['add', '-A'], cwd);
 }
+/** Stages the given repo-relative paths. */
+export function gitAddPaths(paths, cwd) {
+    if (!paths.length)
+        return;
+    git(['add', '--', ...paths], cwd);
+}
 /** Creates a commit with the given message. */
 export function gitCommit(message, cwd) {
     git(['commit', '-m', message], cwd);

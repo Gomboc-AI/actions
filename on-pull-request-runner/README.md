@@ -93,7 +93,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 5. Parallel `orl remediate` per workspace × language (default concurrency: 3)
 6. Merge reports → Integrations POST
 7. **Audit:** inline + summary PR comments → artifacts
-8. **Remediate:** copy fixes to checkout → push bot branch → open stacked PR → artifacts
+8. **Remediate:** replay per-finding ORL hook commits onto bot branch (fallback: single commit) → push → open stacked PR → artifacts
 
 ## Inputs
 

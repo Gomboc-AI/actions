@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      rc:
+        description: >
+          Optional on main: set to a number for tag v<ver>-rc.<n>; leave empty for v<ver>.
+          Required on any other branch (e.g. 2 → …-rc.2).
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Read version and compute release tag
+        id: release
+        env:
+          REF_NAME: ${{ github.ref_name }}
+          RC_INPUT: ${{ inputs.rc }}
+        run: |
+          set -euo pipefail
+          BASE_VER=$(jq -r '.version' version.json)
+          if [[ -z "$BASE_VER" || "$BASE_VER" == "null" ]]; then
+            echo "::error::Missing or invalid .version in version.json"
+            exit 1
+          fi
+          # Normalize: allow version with or without leading "v"
+          BASE_VER="${BASE_VER#v}"
+          PREFIX="v${BASE_VER}"
+          RC_TRIMMED=$(printf '%s' "$RC_INPUT" | xargs || true)
+
+          if [[ "$REF_NAME" == "main" ]]; then
+            if [[ -n "$RC_TRIMMED" ]]; then
+              if ! [[ "$RC_TRIMMED" =~ ^[0-9]+$ ]]; then
+                echo "::error::RC number must be a non-negative integer (got: ${RC_TRIMMED})"
+                exit 1
+              fi
+              TAG="${PREFIX}-rc.${RC_TRIMMED}"
+            else
+              TAG="$PREFIX"
+            fi
+          else
+            if [[ -z "$RC_TRIMMED" ]]; then
+              echo "::error::RC number is required when the workflow is not run from main (set workflow input \"rc\")."
+              exit 1
+            fi
+            if ! [[ "$RC_TRIMMED" =~ ^[0-9]+$ ]]; then
+              echo "::error::RC number must be a non-negative integer (got: ${RC_TRIMMED})"
+              exit 1
+            fi
+            TAG="${PREFIX}-rc.${RC_TRIMMED}"
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.release.outputs.tag }}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --target "${{ github.sha }}" \
+            --generate-notes

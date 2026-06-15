@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import yaml from 'yaml';
 import { publishAuditFeedback } from './lib/audit-feedback.js';
 import { applyOrlFixes } from './lib/apply-orl-fixes.js';
+import { replayRemediationCommits } from './lib/replay-orl-commits.js';
 import { artifactPath } from './lib/artifacts.js';
 import { envInt } from './lib/env.js';
 import { configureGitIdentity, gitAddAll, gitCheckoutBranch, gitCommit, gitDiffNameOnly, gitPush, gitRevParse, gitStatusPorcelain, } from './lib/git.js';
@@ -110,47 +111,62 @@ async function main() {
     const batches = loadBatches();
     const batchReports = loadBatchReports();
     const reportTotals = totalsFromBatchReports(batchReports.map(({ report }) => ({ report })));
-    const { copiedPaths, skippedUnchanged, skippedMissing } = applyOrlFixes({
-        batchWorkRoot,
-        workspaceRoot,
-        batches,
-        reportForBatch: loadBatchReport,
-        stagedFilesForBatch: loadStagedFiles,
-    });
     console.log(`ORL report totals: findings=${reportTotals.findings}, fixes=${reportTotals.fixes}, changes=${reportTotals.changes}`);
-    if (copiedPaths.length) {
-        console.log(`Applied ORL fixes for ${copiedPaths.length} path(s): ${copiedPaths.join(', ')}`);
-    }
-    else {
-        console.log('No remediated files copied from batch workspaces');
-        if (reportTotals.fixes === 0 && reportTotals.changes === 0) {
-            console.log('ORL did not apply any fixes to the staged workspace (findings may remain). No remediation PR will be opened.');
-        }
-        if (skippedUnchanged.length) {
-            console.log(`${skippedUnchanged.length} staged path(s) unchanged vs checkout: ${skippedUnchanged.slice(0, 10).join(', ')}${skippedUnchanged.length > 10 ? '…' : ''}`);
-        }
-        if (skippedMissing.length) {
-            console.log(`${skippedMissing.length} candidate path(s) missing in batch workspace: ${skippedMissing.slice(0, 10).join(', ')}${skippedMissing.length > 10 ? '…' : ''}`);
-        }
-    }
-    const status = gitStatusPorcelain(workspaceRoot);
-    if (!status.trim()) {
-        console.log('No ORL fixes to commit (working tree clean)');
+    if (reportTotals.fixes === 0 && reportTotals.changes === 0) {
+        console.log('ORL did not apply any fixes to the staged workspace (findings may remain). No remediation PR will be opened.');
         return;
     }
     const branchPrefix = process.env.INPUT_REMEDIATION_BRANCH_PREFIX?.trim() || 'gomboc/orl-remediation';
     const botBranch = remediationBranchName(branchPrefix, pr.number);
-    const commitMessage = `chore(gomboc): ORL remediation for PR #${pr.number}`;
+    const prTitle = `chore(gomboc): ORL remediation for PR #${pr.number}`;
+    const baseSha = gitRevParse('HEAD', workspaceRoot);
     gitCheckoutBranch(botBranch, workspaceRoot);
     configureGitIdentity(workspaceRoot);
-    gitAddAll(workspaceRoot);
-    gitCommit(commitMessage, workspaceRoot);
+    let replay = replayRemediationCommits({
+        batches,
+        batchWorkRoot,
+        workspaceRoot,
+    });
+    let copiedPaths = replay.allFiles;
+    if (replay.commitCount === 0) {
+        console.log('No ORL hook commits found; falling back to a single remediation commit');
+        const applied = applyOrlFixes({
+            batchWorkRoot,
+            workspaceRoot,
+            batches,
+            reportForBatch: loadBatchReport,
+            stagedFilesForBatch: loadStagedFiles,
+        });
+        copiedPaths = applied.copiedPaths;
+        if (applied.copiedPaths.length) {
+            console.log(`Applied ORL fixes for ${applied.copiedPaths.length} path(s): ${applied.copiedPaths.join(', ')}`);
+        }
+        else {
+            console.log('No remediated files copied from batch workspaces');
+            if (applied.skippedUnchanged.length) {
+                console.log(`${applied.skippedUnchanged.length} staged path(s) unchanged vs checkout: ${applied.skippedUnchanged.slice(0, 10).join(', ')}${applied.skippedUnchanged.length > 10 ? '…' : ''}`);
+            }
+            if (applied.skippedMissing.length) {
+                console.log(`${applied.skippedMissing.length} candidate path(s) missing in batch workspace: ${applied.skippedMissing.slice(0, 10).join(', ')}${applied.skippedMissing.length > 10 ? '…' : ''}`);
+            }
+        }
+        const status = gitStatusPorcelain(workspaceRoot);
+        if (!status.trim()) {
+            console.log('No ORL fixes to commit (working tree clean)');
+            return;
+        }
+        gitAddAll(workspaceRoot);
+        gitCommit(prTitle, workspaceRoot);
+        replay = { commitCount: 1, allFiles: copiedPaths };
+    }
+    else {
+        console.log(`Replayed ${replay.commitCount} ORL hook commit${replay.commitCount === 1 ? '' : 's'} onto ${botBranch}`);
+    }
     gitPush('origin', botBranch, workspaceRoot);
-    console.log(`Pushed remediation branch ${botBranch}`);
+    console.log(`Pushed remediation branch ${botBranch} (${replay.commitCount} commit${replay.commitCount === 1 ? '' : 's'})`);
     const headSha = gitRevParse('HEAD', workspaceRoot);
-    const baseSha = gitRevParse('HEAD~1', workspaceRoot);
     const scannableFiles = remediationScannableFiles({
-        copiedPaths,
+        copiedPaths: replay.allFiles.length ? replay.allFiles : copiedPaths,
         workspaceRoot,
         baseSha,
         headSha,
@@ -179,7 +195,7 @@ async function main() {
         const created = await github.createPullRequest({
             owner,
             repo,
-            title: commitMessage,
+            title: prTitle,
             head: botBranch,
             base: pr.headRef,
             body: placeholderBody,

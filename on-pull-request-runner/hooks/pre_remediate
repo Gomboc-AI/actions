@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+set -eu
+
+. "$(dirname "$0")/common.sh"
+
+WORKSPACE="$3"
+cd "$WORKSPACE"
+
+: >"$ORL_DIAG_DIR/manifest.jsonl"
+
+export GIT_CONFIG_GLOBAL=/dev/null
+export GIT_CONFIG_SYSTEM=/dev/null
+
+if [ ! -d .git ]; then
+  gomboc_git init -q
+  gomboc_git add -A
+  gomboc_git commit -q -m "chore(gomboc): baseline before ORL remediation" --allow-empty
+fi
