@@ -12,7 +12,7 @@ are resolved autonomously using the rules in this file.
 | Variable | Value |
 |---|---|
 | `GOMBOC_ARTIFACTS_ROOT` | `$RUNNER_TEMP/gomboc-orl` — runner artifact directory |
-| `GOMBOC_SKILLS_ROOT` | Root of the gomboc-enterprise-skills repo (`$GITHUB_ACTION_PATH/../..`) |
+| `GOMBOC_SKILLS_ROOT` | Root of the gomboc-enterprise-skills checkout (`$GITHUB_WORKSPACE/.gomboc-enterprise-skills`) |
 | `GITHUB_WORKSPACE` | Tenant repo checkout root |
 
 Skill scripts are at:

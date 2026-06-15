@@ -111,7 +111,7 @@ runs:
         repository: Gomboc-AI/gomboc-enterprise-skills
         ref: ${{ inputs.gomboc-skills-ref }}
         token: ${{ env.GITHUB_TOKEN }}
-        path: ${{ runner.temp }}/gomboc-enterprise-skills
+        path: .gomboc-enterprise-skills
 
     - id: orl-image
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
@@ -265,7 +265,7 @@ runs:
             'gomboc-enterprise-marketplace': {
               'source': {
                 'source': 'directory',
-                'path': os.path.realpath('${{ runner.temp }}/gomboc-enterprise-skills')
+                'path': os.path.realpath('${{ github.workspace }}/.gomboc-enterprise-skills')
               }
             }
           }
@@ -282,7 +282,7 @@ runs:
       env:
         ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
         GOMBOC_ARTIFACTS_ROOT: ${{ runner.temp }}/gomboc-orl
-        GOMBOC_SKILLS_ROOT: ${{ runner.temp }}/gomboc-enterprise-skills
+        GOMBOC_SKILLS_ROOT: ${{ github.workspace }}/.gomboc-enterprise-skills
         GOMBOC_RULES_SERVICE_URL: https://rules.dev.gcp.gomboc.ai
         CSPM_API_URL: ${{ env.CSPM_API_URL }}
         CSPM_API_TOKEN: ${{ env.CSPM_API_TOKEN }}
