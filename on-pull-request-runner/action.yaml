@@ -412,9 +412,11 @@ runs:
       run: node dist/open-remediation-pr.js
 
     - name: Upload ORL artifacts
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.run-orl.outcome == 'success'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && (steps.run-orl.outcome == 'success' || github.event_name == 'workflow_dispatch')
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: gomboc-orl-report
-        path: ${{ runner.temp }}/gomboc-orl/
+        path: |
+          ${{ runner.temp }}/gomboc-orl/
+          ${{ github.workspace }}/.gomboc/
         retention-days: 14
