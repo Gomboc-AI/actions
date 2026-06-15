@@ -3,19 +3,7 @@
  */
 import { execFileSync } from 'node:child_process';
 const HUNK_RE = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
-/**
- * Returns sorted unique 1-based line numbers on the PR head side that were added (+)
- * or context-changed in the diff. Walking hunks is more reliable than hunk spans alone.
- */
-export function gitDiffChangedLines(args) {
-    const { baseSha, headSha, cwd, filePath } = args;
-    let out;
-    try {
-        out = execFileSync('git', ['diff', '--unified=0', baseSha, headSha, '--', filePath], { cwd, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
-    }
-    catch {
-        return [];
-    }
+function parseDiffOutput(out, includeContext) {
     const lines = new Set();
     let newLine = 0;
     for (const raw of out.split('\n')) {
@@ -34,6 +22,8 @@ export function gitDiffChangedLines(args) {
             continue;
         }
         if (raw.startsWith(' ')) {
+            if (includeContext && newLine > 0)
+                lines.add(newLine);
             newLine++;
             continue;
         }
@@ -42,5 +32,23 @@ export function gitDiffChangedLines(args) {
         }
     }
     return [...lines].sort((a, b) => a - b);
+}
+function runGitDiff(args, unified) {
+    return execFileSync('git', ['diff', `--unified=${unified}`, args.baseSha, args.headSha, '--', args.filePath], { cwd: args.cwd, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 });
+}
+/**
+ * Returns sorted unique 1-based line numbers on the PR head side that appear in the
+ * diff and can anchor review comments (added lines plus in-hunk context with -U3).
+ */
+export function gitDiffChangedLines(args) {
+    try {
+        const withContext = parseDiffOutput(runGitDiff(args, 3), true);
+        if (withContext.length)
+            return withContext;
+        return parseDiffOutput(runGitDiff(args, 0), false);
+    }
+    catch {
+        return [];
+    }
 }
 //# sourceMappingURL=git-diff-lines.js.map

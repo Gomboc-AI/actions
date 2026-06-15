@@ -34,6 +34,12 @@ export function isUnderPath(args: IsUnderPathArgs): boolean {
   return f === d || f.startsWith(`${d}/`);
 }
 
+/** True when the PR head branch is a Gomboc-opened remediation branch. */
+export function isRemediationBotBranch(headRef: string, prefix: string): boolean {
+  const trimmed = (prefix ?? '').trim().replace(/\/+$/, '') || 'gomboc/orl-remediation';
+  return headRef === trimmed || headRef.startsWith(`${trimmed}-`);
+}
+
 /** Minimal touch seeds: deepest dirs covering all changed paths. */
 export function computeTouchSeeds(changedPaths: string[]): string[] {
   const dirs = new Set<string>();

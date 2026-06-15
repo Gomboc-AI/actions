@@ -148,9 +148,6 @@ async function pruneStaleAuditComments(args) {
         if (key && activeDedupeKeys.has(key)) {
             shouldRemove = true;
         }
-        else if (activeDedupeKeys.size > 0) {
-            shouldRemove = true;
-        }
         else if (totalFindings === 0 && scanCompleted) {
             shouldRemove = true;
         }
@@ -181,8 +178,8 @@ async function postInlineComments(args) {
         const usedOnFile = usedLinesByFile.get(candidate.filePath) ?? new Set();
         const unusedFileLines = fileLines.filter((line) => !usedOnFile.has(line));
         const lineCandidates = [
-            ...unusedFileLines,
             candidate.line,
+            ...unusedFileLines.filter((line) => line !== candidate.line),
             ...fileLines.filter((line) => line !== candidate.line && !unusedFileLines.includes(line)),
         ];
         const uniqueLines = [...new Set(lineCandidates.filter((line) => line > 0))];

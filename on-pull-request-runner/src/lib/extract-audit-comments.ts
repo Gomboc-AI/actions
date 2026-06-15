@@ -342,6 +342,19 @@ function preferredLineFromFindingRow(args: {
  * Maps each finding to a distinct changed line in the PR diff when possible.
  * Exported for tests.
  */
+function assignPreferredLinesWithoutDiff(args: {
+  preferredLines: Array<number | null>;
+}): Array<number | null> {
+  const used = new Set<number>();
+  return args.preferredLines.map((preferred) => {
+    if (preferred == null || preferred <= 0) return null;
+    let line = preferred;
+    while (used.has(line)) line++;
+    used.add(line);
+    return line;
+  });
+}
+
 export function assignRemediationAnchorLines(args: {
   rows: OrlFindingLocationRow[];
   changedLines: number[];
@@ -349,7 +362,7 @@ export function assignRemediationAnchorLines(args: {
 }): Array<number | null> {
   const { rows, changedLines, preferredLines } = args;
   if (!changedLines.length) {
-    return rows.map(() => null);
+    return assignPreferredLinesWithoutDiff({ preferredLines });
   }
 
   const sortedChanged = [...new Set(changedLines)].sort((a, b) => a - b);
@@ -549,8 +562,11 @@ function buildRemediationCandidatesForBatch(args: {
     });
 
     for (let i = 0; i < items.length; i++) {
-      const line = assigned[i];
       const item = items[i]!;
+      let line = assigned[i];
+      if (line == null && item.preferredLine != null && item.preferredLine > 0) {
+        line = item.preferredLine;
+      }
       if (line == null) continue;
 
       const meta = ruleMeta(item.rule);

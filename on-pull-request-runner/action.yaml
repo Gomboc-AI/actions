@@ -178,6 +178,7 @@ runs:
       env:
         INPUT_MODE: ${{ inputs.mode }}
         INPUT_MAX_CHANGED_FILES: ${{ inputs.max-changed-files }}
+        INPUT_REMEDIATION_BRANCH_PREFIX: ${{ inputs.remediation-branch-prefix }}
         GITHUB_WORKSPACE: ${{ github.workspace }}
       run: node dist/resolve-pr-files.js
 

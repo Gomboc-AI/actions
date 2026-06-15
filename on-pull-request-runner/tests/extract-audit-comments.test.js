@@ -581,6 +581,64 @@ describe('extract-audit-comments', () => {
     );
   });
 
+  it('uses preferred lines when remediation diff map is empty', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 2,
+              fixes: 2,
+              changes: 2,
+              rules: [
+                {
+                  name: 'orl-rule:stacked',
+                  metadata: { name: 'orl-rule:stacked' },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                    {
+                      id: 'f2',
+                      resolved_location: {
+                        id: 'l2',
+                        file_path: 'main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 2);
+    assert.deepEqual(
+      candidates.map((c) => c.line).sort((a, b) => a - b),
+      [10, 11]
+    );
+  });
+
   it('distributes remediation anchors across PR diff lines instead of stacking', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],

@@ -8,7 +8,7 @@ import { gitDiffNameOnly } from './lib/git.js';
 import { setOutput } from './lib/github-output.js';
 import { loadPullRequestContext } from './lib/github-context.js';
 import { isScannable } from './lib/language.js';
-import { computeTouchSeeds } from './lib/paths.js';
+import { computeTouchSeeds, isRemediationBotBranch } from './lib/paths.js';
 import { exitSkip, runMain } from './lib/runner.js';
 import { requireEnv } from './lib/env.js';
 
@@ -16,6 +16,13 @@ async function main(): Promise<void> {
   const pr = loadPullRequestContext();
   const workspace = requireEnv('GITHUB_WORKSPACE');
   const maxFiles = envInt('INPUT_MAX_CHANGED_FILES', 50);
+  const mode = (process.env.INPUT_MODE ?? '').trim();
+  const branchPrefix =
+    process.env.INPUT_REMEDIATION_BRANCH_PREFIX?.trim() || 'gomboc/orl-remediation';
+
+  if (mode === 'remediate' && isRemediationBotBranch(pr.headRef, branchPrefix)) {
+    exitSkip(`Skipping remediate on Gomboc remediation branch ${pr.headRef}.`);
+  }
 
   const changed = gitDiffNameOnly({
     baseSha: pr.baseSha,
