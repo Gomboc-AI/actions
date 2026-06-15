@@ -5,16 +5,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { gitDiffChangedLines, parsePatchCommentableLines, snapToCommentableLine } from '../dist/lib/git-diff-lines.js';
+import { configureGitIdentity } from '../dist/lib/git.js';
 
 function git(args, cwd) {
   execFileSync('git', args, { cwd, encoding: 'utf8' });
+}
+
+function initRepo(cwd) {
+  git(['init'], cwd);
+  configureGitIdentity(cwd);
 }
 
 describe('git-diff-lines', () => {
   it('collects each added line from multi-line hunks', () => {
     const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'git-diff-lines-'));
     fs.writeFileSync(path.join(cwd, 'main.tf'), 'a\nb\nc\n');
-    git(['init'], cwd);
+    initRepo(cwd);
     git(['add', 'main.tf'], cwd);
     git(['commit', '-m', 'base'], cwd);
 
@@ -42,7 +48,7 @@ describe('git-diff-lines', () => {
       path.join(cwd, 'main.tf'),
       'resource "a" {}\n\nresource "b" {}\n\nresource "c" {}\n'
     );
-    git(['init'], cwd);
+    initRepo(cwd);
     git(['add', 'main.tf'], cwd);
     git(['commit', '-m', 'base'], cwd);
 
