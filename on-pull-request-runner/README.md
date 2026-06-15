@@ -46,24 +46,31 @@ See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 When ORL produces fixes, the action pushes a bot branch and opens a PR **into your feature branch** (stacked on the triggering PR):
 
 ```yaml
-permissions:
-  contents: write
-  pull-requests: write
-  packages: read
+jobs:
+  gomboc-orl:
+    # Skip stacked remediation PRs — they must not re-run remediate mode.
+    if: |
+      !startsWith(github.event.pull_request.head.ref, 'gomboc/orl-remediation-') &&
+      github.event.pull_request.head.ref != 'gomboc/orl-remediation'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
-steps:
-  - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-    with:
-      ref: ${{ github.event.pull_request.head.sha }}
-      fetch-depth: 0
-
-  - uses: gomboc-ai/actions/on-pull-request-runner@main
-    with:
-      mode: remediate
-      remediation-branch-prefix: gomboc/orl-remediation
-    env:
-      GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
+      - uses: gomboc-ai/actions/on-pull-request-runner@main
+        with:
+          mode: remediate
+        env:
+          GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
 ```
+
+The default bot branch prefix is `gomboc/orl-remediation` (`{prefix}-{pr_number}`). If you override `remediation-branch-prefix`, update the job `if` to match.
 
 **Fork PRs:** if the PR head repo differs from the base repo (`pull_request.head.repo.full_name != github.repository`), push is skipped with a warning. Do not use `pull_request_target` to work around this unless you understand the security tradeoffs.
 

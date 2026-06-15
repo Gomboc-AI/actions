@@ -2,7 +2,6 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
   computeTouchSeeds,
-  isRemediationBotBranch,
   isUnderPath,
   joinRepoPath,
   normalizeRepoPath,
@@ -32,12 +31,5 @@ describe('paths', () => {
       joinRepoPath({ base: 'infra', rel: './modules/vpc' }),
       'infra/modules/vpc'
     );
-  });
-
-  it('isRemediationBotBranch matches prefix and numbered branches', () => {
-    assert.equal(isRemediationBotBranch('gomboc/orl-remediation', 'gomboc/orl-remediation'), true);
-    assert.equal(isRemediationBotBranch('gomboc/orl-remediation-18', 'gomboc/orl-remediation'), true);
-    assert.equal(isRemediationBotBranch('feature/foo', 'gomboc/orl-remediation'), false);
-    assert.equal(isRemediationBotBranch('gomboc/orl-remediation-extra', 'gomboc/orl-remediation'), true);
   });
 });
