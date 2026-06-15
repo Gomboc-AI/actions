@@ -13,6 +13,7 @@ permissions:
 jobs:
   orl-audit:
     runs-on: ubuntu-latest
+    timeout-minutes: 25   # allow up to ~13 min for CSPM agent + buffer
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -23,8 +24,14 @@ jobs:
         with:
           mode: audit
           # fail-on-findings: true   # uncomment to fail the job when ORL reports findings
+          # tenant-org: acme         # tenant slug for CSPM rule annotation scoping
         env:
           GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
+          # CSPM secrets — required for the CSPM triage agent
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CSPM_API_URL: ${{ secrets.CSPM_API_URL }}
+          CSPM_API_TOKEN: ${{ secrets.CSPM_API_TOKEN }}
+          GOMBOC_API_TOKEN: ${{ secrets.GOMBOC_API_TOKEN }}
 
   # Uncomment for remediate mode (stacked remediation PR into the feature branch):
   #

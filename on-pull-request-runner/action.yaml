@@ -57,15 +57,28 @@ inputs:
     description: When true, fail the job if findings or changes are greater than zero
     required: false
     default: 'false'
+  tenant-org:
+    description: Tenant org slug used to scope CSPM rule annotations (e.g. acme)
+    required: false
+    default: ''
+  cspm-observation-id:
+    description: Pin CSPM triage to a specific observation ID (workflow_dispatch runs)
+    required: false
+    default: ''
+  cspm-source-path:
+    description: Repo-relative path to scan for IaC (workflow_dispatch runs; blank = repo root)
+    required: false
+    default: ''
 
 runs:
   using: composite
   steps:
-    - name: Require pull_request event
+    - name: Require pull_request or workflow_dispatch event
       shell: bash
       run: |
-        if [ "${{ github.event_name }}" != "pull_request" ]; then
-          echo "::error::on-pull-request-runner only supports pull_request events (got: ${{ github.event_name }})"
+        if [ "${{ github.event_name }}" != "pull_request" ] && \
+           [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+          echo "::error::This action only supports pull_request and workflow_dispatch events (got: ${{ github.event_name }})"
           exit 1
         fi
 
@@ -88,7 +101,7 @@ runs:
       run: echo "Skipping — workflow triggered by Gomboc bot."
 
     - id: orl-image
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
       shell: bash
       run: |
         if [ -n "${{ inputs.orl-image }}" ]; then
@@ -98,7 +111,7 @@ runs:
         fi
 
     - name: Cache ORL Docker image
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
       id: orl-docker-cache
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
@@ -106,14 +119,14 @@ runs:
         key: docker-${{ steps.orl-image.outputs.ref }}
 
     - name: Pull ORL Docker image
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.orl-docker-cache.outputs.cache-hit != 'true'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.orl-docker-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
         docker pull "${{ steps.orl-image.outputs.ref }}"
         docker save "${{ steps.orl-image.outputs.ref }}" -o /tmp/orl-image.tar
 
     - name: Load ORL Docker image
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.orl-docker-cache.outputs.cache-hit == 'true'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.orl-docker-cache.outputs.cache-hit == 'true'
       shell: bash
       run: docker load -i /tmp/orl-image.tar
 
@@ -141,7 +154,7 @@ runs:
 
     - name: Resolve rules channel
       id: resolve-channel
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -150,7 +163,7 @@ runs:
       run: node dist/resolve-channel.js
 
     - name: Cache rules
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
       id: rules-cache
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
@@ -159,7 +172,7 @@ runs:
 
     - name: Pull rules
       id: pull-rules
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -172,7 +185,7 @@ runs:
 
     - name: Resolve PR changed files
       id: resolve-pr-files
-      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -183,7 +196,7 @@ runs:
 
     - name: Discover touched workspaces
       id: discover-workspaces
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.resolve-pr-files.outputs.skip != 'true'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.resolve-pr-files.outputs.skip != 'true'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -193,7 +206,7 @@ runs:
 
     - name: Plan evaluation batches
       id: plan-batches
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.discover-workspaces.outcome == 'success' && steps.discover-workspaces.outputs.skip != 'true'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.discover-workspaces.outcome == 'success' && steps.discover-workspaces.outputs.skip != 'true'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -202,7 +215,7 @@ runs:
 
     - name: Run ORL
       id: run-orl
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.plan-batches.outcome == 'success' && steps.plan-batches.outputs.skip != 'true'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.plan-batches.outcome == 'success' && steps.plan-batches.outputs.skip != 'true'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -215,13 +228,143 @@ runs:
       run: node dist/run-orl.js
 
     - name: Normalize report
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.run-orl.outcome == 'success'
       shell: bash
       working-directory: ${{ github.action_path }}
       run: node dist/normalize-report.js
 
+    - name: Setup CSPM agent
+      id: setup-cspm-agent
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && (steps.run-orl.outcome == 'success' || github.event_name == 'workflow_dispatch')
+      shell: bash
+      run: |
+        # Register the gomboc-enterprise marketplace with Claude Code so skills
+        # are available to the headless agent. This writes to the runner's home
+        # directory and is scoped to this job only.
+        mkdir -p "$HOME/.claude"
+        python3 -c "
+        import json, os
+        settings = {
+          'enabledPlugins': {
+            'gomboc@gomboc-enterprise-marketplace': True
+          },
+          'extraKnownMarketplaces': {
+            'gomboc-enterprise-marketplace': {
+              'source': {
+                'source': 'directory',
+                'path': os.path.realpath('${{ github.action_path }}/../../')
+              }
+            }
+          }
+        }
+        print(json.dumps(settings, indent=2))
+        " > "$HOME/.claude/settings.json"
+
+    - name: CSPM triage agent
+      id: cspm-agent
+      continue-on-error: true
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && (steps.run-orl.outcome == 'success' || github.event_name == 'workflow_dispatch')
+      working-directory: ${{ github.action_path }}/agent
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
+        GOMBOC_ARTIFACTS_ROOT: ${{ runner.temp }}/gomboc-orl
+        GOMBOC_SKILLS_ROOT: ${{ github.action_path }}/../..
+        GOMBOC_RULES_SERVICE_URL: https://rules.dev.gcp.gomboc.ai
+        CSPM_API_URL: ${{ env.CSPM_API_URL }}
+        CSPM_API_TOKEN: ${{ env.CSPM_API_TOKEN }}
+        GOMBOC_API_TOKEN: ${{ env.GOMBOC_API_TOKEN }}
+        CSPM_TENANT_ORG: ${{ inputs.tenant-org }}
+        GITHUB_TOKEN: ${{ github.token }}
+        GITHUB_WORKSPACE: ${{ github.workspace }}
+        CSPM_OBSERVATION_ID: ${{ inputs.cspm-observation-id }}
+        CSPM_SOURCE_PATH: ${{ inputs.cspm-source-path }}
+        CSPM_DRY_RUN: 'true'
+      run: |
+        set -o pipefail
+        mkdir -p "${{ runner.temp }}/gomboc-orl"
+        AGENT_OUTPUT="${{ runner.temp }}/gomboc-orl/cspm-agent-output.txt"
+        npx --yes @anthropic-ai/claude-code \
+          -p "Run the cspm-triage skill in autonomous CI mode as defined in CLAUDE.md. Triage the top CSPM alert against the PR workspace and emit a CSPM_TRIAGE_RESULT block." \
+          --permission-mode bypassPermissions \
+          --allowedTools "Bash,Read,Grep,LS,Skill,Agent" \
+          2>&1 | tee "$AGENT_OUTPUT"
+
+    - name: CSPM triage summary
+      id: cspm-summary
+      if: steps.cspm-agent.outcome != 'skipped'
+      shell: bash
+      run: |
+        OUTPUT_FILE="${{ runner.temp }}/gomboc-orl/cspm-agent-output.txt"
+
+        if [ ! -f "$OUTPUT_FILE" ]; then
+          echo "### Gomboc CSPM Triage" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Agent output not found. Agent may not have started." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        RESULT=$(sed -n '/^CSPM_TRIAGE_RESULT_START$/,/^CSPM_TRIAGE_RESULT_END$/p' "$OUTPUT_FILE" \
+          | grep -v '^CSPM_TRIAGE_RESULT_')
+
+        if [ -z "$RESULT" ]; then
+          echo "### Gomboc CSPM Triage" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "No structured result block found in agent output." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        _get() { echo "$RESULT" | grep "^$1:" | sed "s/^$1: *//" | head -1; }
+
+        STATUS=$(_get STATUS)
+        TIER=$(_get TIER)
+        CONFIDENCE=$(_get CONFIDENCE)
+        CANDIDATES=$(_get CANDIDATES_EVALUATED)
+        CONTROL_ID=$(_get CONTROL_ID)
+        SEVERITY=$(_get SEVERITY)
+        RULE_NAME=$(_get RULE_NAME)
+        RULE_RELEASED=$(_get RULE_RELEASED)
+        REMEDIATION_TYPE=$(_get REMEDIATION_TYPE)
+        FILES_SCANNED=$(_get FILES_SCANNED)
+        VIOLATIONS_FOUND=$(_get VIOLATIONS_FOUND)
+        DEFERRED_REASON=$(_get DEFERRED_REASON)
+
+        {
+          echo "### Gomboc CSPM Triage"
+          echo ""
+          echo "| Field | Value |"
+          echo "|---|---|"
+          echo "| Status | $STATUS |"
+          if [ "$STATUS" = "success" ]; then
+            echo "| Tier | $TIER |"
+            echo "| Confidence | $CONFIDENCE |"
+            echo "| Control ID | \`$CONTROL_ID\` |"
+            echo "| Severity | $SEVERITY |"
+            echo "| Rule | \`$RULE_NAME\` |"
+            echo "| Rule released | $RULE_RELEASED |"
+            echo "| Remediation type | $REMEDIATION_TYPE |"
+            echo "| Files scanned | $FILES_SCANNED |"
+            echo "| Violations found | $VIOLATIONS_FOUND |"
+            if [ "$REMEDIATION_TYPE" = "REMEDIATION_WITH_INPUT" ]; then
+              echo ""
+              echo "Note: partial fix. Output contains USER_INPUT_N placeholders. Operator-supplied values required before merge."
+            fi
+          elif [ "$STATUS" = "deferred" ]; then
+            echo "| Candidates evaluated | $CANDIDATES |"
+            echo "| Reason | $DEFERRED_REASON |"
+            echo ""
+            echo "No actionable alert found for this PR's workspaces. Manual triage recommended."
+          else
+            echo "| Reason | $DEFERRED_REASON |"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+        echo "control-id=$CONTROL_ID" >> "$GITHUB_OUTPUT"
+        echo "rule-name=$RULE_NAME" >> "$GITHUB_OUTPUT"
+
     - name: Post Integrations
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.run-orl.outcome == 'success'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -231,7 +374,7 @@ runs:
       run: node dist/post-integrations.js
 
     - name: Publish audit comments
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success' && inputs.mode == 'audit'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.run-orl.outcome == 'success' && inputs.mode == 'audit'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -243,7 +386,7 @@ runs:
       run: node dist/publish-audit-comments.js
 
     - name: Open remediation PR
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success' && inputs.mode == 'remediate'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.run-orl.outcome == 'success' && inputs.mode == 'remediate'
       shell: bash
       working-directory: ${{ github.action_path }}
       env:
@@ -256,7 +399,7 @@ runs:
       run: node dist/open-remediation-pr.js
 
     - name: Upload ORL artifacts
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request' && steps.run-orl.outcome == 'success'
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: gomboc-orl-report
