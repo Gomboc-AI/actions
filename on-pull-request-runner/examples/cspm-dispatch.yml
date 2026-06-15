@@ -40,10 +40,13 @@ jobs:
           mode: audit
           cspm-observation-id: ${{ inputs.observation-id }}
           cspm-source-path: ${{ inputs.source-path }}
-          tenant-org: cspm-triage-test
+          # tenant-org: acme
+          # gomboc-skills-ref: main   # pin to a specific branch/tag of gomboc-enterprise-skills
         env:
           GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           CSPM_API_URL: ${{ secrets.CSPM_API_URL }}
           CSPM_API_TOKEN: ${{ secrets.CSPM_API_TOKEN }}
           GOMBOC_API_TOKEN: ${{ secrets.GOMBOC_API_TOKEN }}
+          # GITHUB_TOKEN: ${{ secrets.GH_PAT }}   # required when this workflow runs in a
+          #                                        # different org from gomboc-enterprise-skills

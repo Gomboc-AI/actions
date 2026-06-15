@@ -69,6 +69,10 @@ inputs:
     description: Repo-relative path to scan for IaC (workflow_dispatch runs; blank = repo root)
     required: false
     default: ''
+  gomboc-skills-ref:
+    description: Branch or tag of Gomboc-AI/gomboc-enterprise-skills to use for skills and scripts
+    required: false
+    default: 'main'
 
 runs:
   using: composite
@@ -99,6 +103,15 @@ runs:
       if: steps.its-gomboc.outputs.its_gomboc == 'true'
       shell: bash
       run: echo "Skipping — workflow triggered by Gomboc bot."
+
+    - name: Checkout gomboc-enterprise-skills
+      if: steps.its-gomboc.outputs.its_gomboc == 'false'
+      uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      with:
+        repository: Gomboc-AI/gomboc-enterprise-skills
+        ref: ${{ inputs.gomboc-skills-ref }}
+        token: ${{ env.GITHUB_TOKEN }}
+        path: ${{ runner.temp }}/gomboc-enterprise-skills
 
     - id: orl-image
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && github.event_name == 'pull_request'
@@ -252,7 +265,7 @@ runs:
             'gomboc-enterprise-marketplace': {
               'source': {
                 'source': 'directory',
-                'path': os.path.realpath('${{ github.action_path }}/../../')
+                'path': os.path.realpath('${{ runner.temp }}/gomboc-enterprise-skills')
               }
             }
           }
@@ -269,7 +282,7 @@ runs:
       env:
         ANTHROPIC_API_KEY: ${{ env.ANTHROPIC_API_KEY }}
         GOMBOC_ARTIFACTS_ROOT: ${{ runner.temp }}/gomboc-orl
-        GOMBOC_SKILLS_ROOT: ${{ github.action_path }}/../..
+        GOMBOC_SKILLS_ROOT: ${{ runner.temp }}/gomboc-enterprise-skills
         GOMBOC_RULES_SERVICE_URL: https://rules.dev.gcp.gomboc.ai
         CSPM_API_URL: ${{ env.CSPM_API_URL }}
         CSPM_API_TOKEN: ${{ env.CSPM_API_TOKEN }}
