@@ -51,4 +51,26 @@ export function gitDiffChangedLines(args) {
         return [];
     }
 }
+/** Parses a unified diff patch (e.g. from the GitHub pulls/files API). */
+export function parsePatchCommentableLines(patch) {
+    return parseDiffOutput(patch, true);
+}
+/** Picks the closest commentable line when the preferred anchor is outside the PR diff. */
+export function snapToCommentableLine(preferred, commentable) {
+    if (!commentable.length) {
+        return preferred > 0 ? preferred : null;
+    }
+    if (preferred > 0 && commentable.includes(preferred))
+        return preferred;
+    let best = commentable[0];
+    let bestDist = Math.abs(best - (preferred > 0 ? preferred : best));
+    for (const line of commentable) {
+        const dist = Math.abs(line - (preferred > 0 ? preferred : line));
+        if (dist < bestDist) {
+            best = line;
+            bestDist = dist;
+        }
+    }
+    return best;
+}
 //# sourceMappingURL=git-diff-lines.js.map

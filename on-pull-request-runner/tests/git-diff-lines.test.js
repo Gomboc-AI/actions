@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { gitDiffChangedLines } from '../dist/lib/git-diff-lines.js';
+import { gitDiffChangedLines, parsePatchCommentableLines, snapToCommentableLine } from '../dist/lib/git-diff-lines.js';
 
 function git(args, cwd) {
   execFileSync('git', args, { cwd, encoding: 'utf8' });
@@ -66,5 +66,24 @@ describe('git-diff-lines', () => {
     assert.ok(lines.includes(1));
     assert.ok(lines.includes(3));
     assert.ok(lines.includes(5));
+  });
+
+  it('parses commentable lines from a unified patch', () => {
+    const patch = [
+      '@@ -1,3 +1,4 @@',
+      ' resource "a" {',
+      '-  old = true',
+      '+  new = true',
+      '+  added = 1',
+      ' }',
+    ].join('\n');
+
+    assert.deepEqual(parsePatchCommentableLines(patch), [1, 2, 3, 4]);
+  });
+
+  it('snaps preferred anchors to the nearest commentable diff line', () => {
+    assert.equal(snapToCommentableLine(10, [40, 55, 70]), 40);
+    assert.equal(snapToCommentableLine(72, [40, 55, 70]), 70);
+    assert.equal(snapToCommentableLine(55, [40, 55, 70]), 55);
   });
 });

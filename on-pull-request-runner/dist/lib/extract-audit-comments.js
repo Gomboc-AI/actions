@@ -2,7 +2,7 @@ import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-repor
 import { formatScoreLabel, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
 import { portalRuleUrl } from './portal-url.js';
 import { resolveScannablePath } from './scannable-path.js';
-import { countRuleFindings } from './report-counts.js';
+import { countRuleFindings, countRuleRemediationSlots } from './report-counts.js';
 import { compareRulesByImpactRisk } from './rule-metadata.js';
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
 export function auditCommentMarker(dedupeKey) {
@@ -281,8 +281,8 @@ export function assignRemediationAnchorLines(args) {
     }
     return assigned;
 }
-function expandFindingRows(rule) {
-    const target = countRuleFindings(rule);
+function expandFindingRows(rule, targetOverride) {
+    const target = targetOverride ?? countRuleFindings(rule);
     if (target <= 0)
         return [];
     const rows = rule.finding_locations ?? [];
@@ -321,8 +321,8 @@ function collectRemediationPending(args) {
     const { rules, workspacePath, diagnostics, prScannableFiles } = args;
     const pending = [];
     for (const rule of rules) {
-        const findingCount = countRuleFindings(rule);
-        if (findingCount <= 0)
+        const slotCount = countRuleRemediationSlots(rule);
+        if (slotCount <= 0)
             continue;
         const legacyFallback = resolveLegacyScannablePath({
             rule,
@@ -330,7 +330,7 @@ function collectRemediationPending(args) {
             diagnostics,
             prScannableFiles,
         });
-        for (const [index, row] of expandFindingRows(rule).entries()) {
+        for (const [index, row] of expandFindingRows(rule, slotCount).entries()) {
             const loc = locationFromFindingRow(row);
             let scannablePath = null;
             let preferredLine = null;
@@ -491,16 +491,48 @@ export function extractAuditCommentCandidates(args) {
         const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
         const batchRules = report.spec?.rules ?? [];
         if (anchorStrategy === 'remediation') {
-            const eligibleRules = batchRules.filter((rule) => countRuleFindings(rule) > 0 ||
-                (rule.finding_locations?.length ?? 0) > 0 ||
-                pathsFromRule(rule).length > 0);
-            for (const candidate of buildRemediationCandidatesForBatch({
+            const eligibleRules = batchRules.filter((rule) => countRuleRemediationSlots(rule) > 0 || pathsFromRule(rule).length > 0);
+            const remediationCandidates = buildRemediationCandidatesForBatch({
                 rules: eligibleRules,
                 workspacePath,
                 diagnostics,
                 prScannableFiles,
                 diffChangedLines,
-            })) {
+            });
+            if (remediationCandidates.length === 0 && eligibleRules.length > 0) {
+                for (const rule of eligibleRules) {
+                    const meta = ruleMeta(rule);
+                    const attempts = tryLegacyPaths({
+                        rule,
+                        workspacePath,
+                        diagnostics,
+                        prScannableFiles,
+                        diffChangedLines,
+                    });
+                    for (const [index, attempt] of attempts.entries()) {
+                        const dedupeKey = remediationFindingDedupeKey(rule.name, `${rule.name}-legacy-${index}`, attempt.scannablePath);
+                        if (seen.has(dedupeKey))
+                            continue;
+                        seen.add(dedupeKey);
+                        candidates.push({
+                            dedupeKey,
+                            ruleName: rule.name,
+                            displayName: meta.displayName,
+                            description: meta.description,
+                            impact: meta.impact,
+                            impactStatement: meta.impactStatement,
+                            risk: meta.risk,
+                            riskStatement: meta.riskStatement,
+                            filePath: attempt.scannablePath,
+                            line: attempt.anchor.line,
+                            startLine: attempt.anchor.startLine,
+                            endLine: attempt.anchor.endLine,
+                        });
+                    }
+                }
+                continue;
+            }
+            for (const candidate of remediationCandidates) {
                 if (seen.has(candidate.dedupeKey))
                     continue;
                 seen.add(candidate.dedupeKey);
@@ -556,7 +588,7 @@ export function extractAuditCommentCandidates(args) {
  * `finding_locations` rows than `findings`). Optionally caps to report total.
  */
 export function capAuditCommentCandidates(args) {
-    const { candidates, rules, totalFindingsCap } = args;
+    const { candidates, rules, totalFindingsCap, perRuleLimit = countRuleFindings } = args;
     const rulesByName = new Map(rules.map((r) => [r.name, r]));
     const sorted = [...candidates].sort((a, b) => {
         const ruleA = rulesByName.get(a.ruleName);
@@ -575,7 +607,7 @@ export function capAuditCommentCandidates(args) {
     const capped = [];
     for (const candidate of sorted) {
         const rule = rulesByName.get(candidate.ruleName);
-        const limit = rule ? countRuleFindings(rule) : 0;
+        const limit = rule ? perRuleLimit(rule) : 0;
         if (limit <= 0)
             continue;
         const posted = perRulePosted.get(candidate.ruleName) ?? 0;

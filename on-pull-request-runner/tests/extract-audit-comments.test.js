@@ -639,6 +639,53 @@ describe('extract-audit-comments', () => {
     );
   });
 
+  it('builds remediation comments from fixes when findings count is zero', () => {
+    const rule = {
+      name: 'orl-rule:fixed',
+      metadata: { name: 'orl-rule:fixed' },
+      findings: 0,
+      fixes: 2,
+      changes: 2,
+      files_changed: { 'main.tf': { line: 8 } },
+    };
+
+    const raw = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 0,
+              fixes: 2,
+              changes: 2,
+              rules: [rule],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      diffChangedLines: new Map([['main.tf', [40, 55]]]),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(raw.length, 2);
+
+    const capped = capAuditCommentCandidates({
+      candidates: raw,
+      rules: [rule],
+      totalFindingsCap: 2,
+      perRuleLimit: (r) => Math.max(r.fixes ?? 0, r.changes ?? 0),
+    });
+
+    assert.equal(capped.length, 2);
+  });
+
   it('distributes remediation anchors across PR diff lines instead of stacking', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],

@@ -90,6 +90,16 @@ export class GitHubClient {
         const { owner, repo, commentId } = args;
         await this.request('DELETE', `/repos/${owner}/${repo}/pulls/comments/${commentId}`);
     }
+    /** Fetches pull request metadata including resolved base/head SHAs. */
+    async getPullRequest(args) {
+        const { owner, repo, pullNumber } = args;
+        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pullNumber}`);
+    }
+    /** Lists files changed in a pull request (includes unified diff patches). */
+    async listPullRequestFiles(args) {
+        const { owner, repo, pullNumber } = args;
+        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100`);
+    }
     /** Lists open pull requests for dedupe checks (first page). */
     async listOpenPullRequests(args) {
         const { owner, repo } = args;

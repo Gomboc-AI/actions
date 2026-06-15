@@ -50,8 +50,19 @@ export type IssueComment = {
 export type PullRequestSummary = {
   number: number;
   state: string;
-  head: { ref: string };
-  base: { ref: string };
+  head: { ref: string; sha?: string };
+  base: { ref: string; sha?: string };
+};
+
+export type PullRequestDetail = {
+  number: number;
+  base: { sha: string };
+  head: { sha: string };
+};
+
+export type PullRequestFile = {
+  filename: string;
+  patch?: string;
 };
 
 export type CreatePullRequestArgs = {
@@ -196,6 +207,32 @@ export class GitHubClient {
     await this.request(
       'DELETE',
       `/repos/${owner}/${repo}/pulls/comments/${commentId}`
+    );
+  }
+
+  /** Fetches pull request metadata including resolved base/head SHAs. */
+  async getPullRequest(args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+  }): Promise<PullRequestDetail> {
+    const { owner, repo, pullNumber } = args;
+    return this.request<PullRequestDetail>(
+      'GET',
+      `/repos/${owner}/${repo}/pulls/${pullNumber}`
+    );
+  }
+
+  /** Lists files changed in a pull request (includes unified diff patches). */
+  async listPullRequestFiles(args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+  }): Promise<PullRequestFile[]> {
+    const { owner, repo, pullNumber } = args;
+    return this.request<PullRequestFile[]>(
+      'GET',
+      `/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100`
     );
   }
 

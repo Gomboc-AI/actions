@@ -14,7 +14,7 @@ import {
   type AuditCommentCandidate,
   type DiagnosticsShape,
 } from './extract-audit-comments.js';
-import { gitDiffChangedLines } from './git-diff-lines.js';
+import { gitDiffChangedLines, parsePatchCommentableLines, snapToCommentableLine } from './git-diff-lines.js';
 import type { GitHubClient } from './clients/github-client.js';
 import {
   formatScoreMarkdown,
@@ -24,6 +24,7 @@ import {
 import { formatRuleDisplayLink } from './portal-url.js';
 import {
   countRuleFindings,
+  countRuleRemediationSlots,
   totalsFromBatchReports,
 } from './report-counts.js';
 import {
@@ -119,6 +120,45 @@ function buildDiffChangedLinesMap(args: {
     });
     if (lines.length) map.set(file, lines);
   }
+  return map;
+}
+
+async function buildCommentableLinesMap(args: {
+  github: GitHubClient;
+  owner: string;
+  repo: string;
+  pullNumber: number;
+  scannable: string[];
+  baseSha: string;
+  headSha: string;
+  cwd: string;
+  mergePullPatches: boolean;
+}): Promise<Map<string, number[]>> {
+  const map = buildDiffChangedLinesMap({
+    scannable: args.scannable,
+    baseSha: args.baseSha,
+    headSha: args.headSha,
+    cwd: args.cwd,
+  });
+
+  if (!args.mergePullPatches) return map;
+
+  const pullFiles = await args.github.listPullRequestFiles({
+    owner: args.owner,
+    repo: args.repo,
+    pullNumber: args.pullNumber,
+  });
+
+  for (const file of pullFiles) {
+    if (!file.patch) continue;
+    const fromPatch = parsePatchCommentableLines(file.patch);
+    if (!fromPatch.length) continue;
+
+    const existing = map.get(file.filename) ?? [];
+    const merged = [...new Set([...existing, ...fromPatch])].sort((a, b) => a - b);
+    map.set(file.filename, merged);
+  }
+
   return map;
 }
 
@@ -334,14 +374,16 @@ async function postInlineComments(args: {
 
     const fileLines = commentableLinesByFile?.get(candidate.filePath) ?? [];
     const usedOnFile = usedLinesByFile.get(candidate.filePath) ?? new Set<number>();
-    const unusedFileLines = fileLines.filter((line) => !usedOnFile.has(line));
-    const lineCandidates = [
-      candidate.line,
-      ...unusedFileLines.filter((line) => line !== candidate.line),
-      ...fileLines.filter(
-        (line) => line !== candidate.line && !unusedFileLines.includes(line)
-      ),
-    ];
+    const primaryLine =
+      fileLines.length > 0
+        ? snapToCommentableLine(candidate.line, fileLines) ?? fileLines[0]!
+        : candidate.line;
+    const unusedFileLines = fileLines.filter(
+      (line) => line !== primaryLine && !usedOnFile.has(line)
+    );
+    const lineCandidates = fileLines.length
+      ? [primaryLine, ...unusedFileLines, ...fileLines.filter((line) => line !== primaryLine)]
+      : [candidate.line];
     const uniqueLines = [...new Set(lineCandidates.filter((line) => line > 0))];
 
     let createdId: number | null = null;
@@ -463,12 +505,32 @@ export async function publishAuditFeedback(
     changes: number;
   }>(artifactPath('normalized-report.json'));
 
+  const isRemediation = summaryTarget === 'pull_body';
+
+  let diffBaseSha = baseSha;
+  let commentHeadSha = headSha;
+  if (isRemediation) {
+    const prMeta = await github.getPullRequest({ owner, repo, pullNumber });
+    diffBaseSha = prMeta.base.sha;
+    commentHeadSha = prMeta.head.sha;
+    if (commentHeadSha !== headSha) {
+      console.log(
+        `Using remediation PR head ${commentHeadSha.slice(0, 7)} for inline comments (checkout ${headSha.slice(0, 7)})`
+      );
+    }
+  }
+
   const prScannableFiles = new Set(scannableFiles);
-  const diffChangedLines = buildDiffChangedLinesMap({
+  const diffChangedLines = await buildCommentableLinesMap({
+    github,
+    owner,
+    repo,
+    pullNumber,
     scannable: scannableFiles,
-    baseSha,
-    headSha,
+    baseSha: diffBaseSha,
+    headSha: commentHeadSha,
     cwd: workspaceRoot,
+    mergePullPatches: isRemediation,
   });
 
   const batchReports = loadBatchReportsWithWorkspace();
@@ -483,30 +545,33 @@ export async function publishAuditFeedback(
     batchDiagnostics,
     prScannableFiles,
     diffChangedLines,
-    anchorStrategy: summaryTarget === 'pull_body' ? 'remediation' : 'audit',
+    anchorStrategy: isRemediation ? 'remediation' : 'audit',
   });
 
   const reportTotals = totalsFromBatchReports(batchReports);
   const totalFindings = Math.max(normalized.findings ?? 0, reportTotals.findings);
   const totalFixes = Math.max(normalized.fixes ?? 0, reportTotals.fixes);
   const totalChanges = Math.max(normalized.changes ?? 0, reportTotals.changes);
+  const totalCommentSlots = isRemediation
+    ? Math.max(totalFindings, totalFixes, totalChanges)
+    : totalFindings;
 
   const allRules = batchReports.flatMap(({ report }) => report.spec?.rules ?? []);
   const candidates = capAuditCommentCandidates({
     candidates: candidatesRaw,
     rules: allRules,
-    totalFindingsCap: totalFindings,
+    totalFindingsCap: totalCommentSlots,
+    perRuleLimit: isRemediation ? countRuleRemediationSlots : countRuleFindings,
   });
 
   if (candidatesRaw.length !== candidates.length) {
     console.log(
-      `Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report findings=${totalFindings})`
+      `Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report slots=${totalCommentSlots})`
     );
   }
 
-  const unanchored = Math.max(0, totalFindings - candidates.length);
+  const unanchored = Math.max(0, totalCommentSlots - candidates.length);
   const scanCompleted = batchReports.length > 0;
-  const isRemediation = summaryTarget === 'pull_body';
 
   if (isRemediation) {
     for (const [file, lines] of diffChangedLines) {
@@ -525,7 +590,7 @@ export async function publishAuditFeedback(
   }
 
   console.log(
-    `Inline comment planning: findings=${totalFindings}, candidates=${candidates.length}, scannable=${scannableFiles.length}`
+    `Inline comment planning: findings=${totalFindings}, fixes=${totalFixes}, candidates=${candidates.length}, scannable=${scannableFiles.length}`
   );
 
   const { posted, skipped, postedCommentIds, activeDedupeKeys } =
@@ -534,7 +599,7 @@ export async function publishAuditFeedback(
       owner,
       repo,
       pullNumber,
-      headSha,
+      headSha: commentHeadSha,
       candidates,
       maxComments,
       portalServiceUrl,

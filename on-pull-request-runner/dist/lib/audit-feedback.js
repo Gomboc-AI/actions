@@ -5,10 +5,10 @@ import fs from 'node:fs';
 import yaml from 'yaml';
 import { artifactPath } from './artifacts.js';
 import { AUDIT_COMMENT_MARKER, capAuditCommentCandidates, extractAuditCommentCandidates, formatInlineCommentBody, isAuditCommentBody, parseAuditCommentDedupeKey, } from './extract-audit-comments.js';
-import { gitDiffChangedLines } from './git-diff-lines.js';
+import { gitDiffChangedLines, parsePatchCommentableLines, snapToCommentableLine } from './git-diff-lines.js';
 import { formatScoreMarkdown, ruleImpactRisk, sortRulesByImpactRisk, } from './rule-metadata.js';
 import { formatRuleDisplayLink } from './portal-url.js';
-import { countRuleFindings, totalsFromBatchReports, } from './report-counts.js';
+import { countRuleFindings, countRuleRemediationSlots, totalsFromBatchReports, } from './report-counts.js';
 import { formatActionNoticesSection, hasAuthFailureNotices, hasErrorNotices, loadActionNotices, } from './action-notices.js';
 function loadJson(file) {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -70,6 +70,32 @@ function buildDiffChangedLinesMap(args) {
         });
         if (lines.length)
             map.set(file, lines);
+    }
+    return map;
+}
+async function buildCommentableLinesMap(args) {
+    const map = buildDiffChangedLinesMap({
+        scannable: args.scannable,
+        baseSha: args.baseSha,
+        headSha: args.headSha,
+        cwd: args.cwd,
+    });
+    if (!args.mergePullPatches)
+        return map;
+    const pullFiles = await args.github.listPullRequestFiles({
+        owner: args.owner,
+        repo: args.repo,
+        pullNumber: args.pullNumber,
+    });
+    for (const file of pullFiles) {
+        if (!file.patch)
+            continue;
+        const fromPatch = parsePatchCommentableLines(file.patch);
+        if (!fromPatch.length)
+            continue;
+        const existing = map.get(file.filename) ?? [];
+        const merged = [...new Set([...existing, ...fromPatch])].sort((a, b) => a - b);
+        map.set(file.filename, merged);
     }
     return map;
 }
@@ -176,12 +202,13 @@ async function postInlineComments(args) {
         }
         const fileLines = commentableLinesByFile?.get(candidate.filePath) ?? [];
         const usedOnFile = usedLinesByFile.get(candidate.filePath) ?? new Set();
-        const unusedFileLines = fileLines.filter((line) => !usedOnFile.has(line));
-        const lineCandidates = [
-            candidate.line,
-            ...unusedFileLines.filter((line) => line !== candidate.line),
-            ...fileLines.filter((line) => line !== candidate.line && !unusedFileLines.includes(line)),
-        ];
+        const primaryLine = fileLines.length > 0
+            ? snapToCommentableLine(candidate.line, fileLines) ?? fileLines[0]
+            : candidate.line;
+        const unusedFileLines = fileLines.filter((line) => line !== primaryLine && !usedOnFile.has(line));
+        const lineCandidates = fileLines.length
+            ? [primaryLine, ...unusedFileLines, ...fileLines.filter((line) => line !== primaryLine)]
+            : [candidate.line];
         const uniqueLines = [...new Set(lineCandidates.filter((line) => line > 0))];
         let createdId = null;
         let postedLine = null;
@@ -239,12 +266,28 @@ async function upsertSummaryIssueComment(args) {
 export async function publishAuditFeedback(args) {
     const { github, owner, repo, pullNumber, headSha, baseSha, workspaceRoot, scannableFiles, portalServiceUrl, maxComments, summaryTarget, introLines, } = args;
     const normalized = loadJson(artifactPath('normalized-report.json'));
+    const isRemediation = summaryTarget === 'pull_body';
+    let diffBaseSha = baseSha;
+    let commentHeadSha = headSha;
+    if (isRemediation) {
+        const prMeta = await github.getPullRequest({ owner, repo, pullNumber });
+        diffBaseSha = prMeta.base.sha;
+        commentHeadSha = prMeta.head.sha;
+        if (commentHeadSha !== headSha) {
+            console.log(`Using remediation PR head ${commentHeadSha.slice(0, 7)} for inline comments (checkout ${headSha.slice(0, 7)})`);
+        }
+    }
     const prScannableFiles = new Set(scannableFiles);
-    const diffChangedLines = buildDiffChangedLinesMap({
+    const diffChangedLines = await buildCommentableLinesMap({
+        github,
+        owner,
+        repo,
+        pullNumber,
         scannable: scannableFiles,
-        baseSha,
-        headSha,
+        baseSha: diffBaseSha,
+        headSha: commentHeadSha,
         cwd: workspaceRoot,
+        mergePullPatches: isRemediation,
     });
     const batchReports = loadBatchReportsWithWorkspace();
     const batchDiagnostics = loadBatchDiagnostics();
@@ -255,24 +298,27 @@ export async function publishAuditFeedback(args) {
         batchDiagnostics,
         prScannableFiles,
         diffChangedLines,
-        anchorStrategy: summaryTarget === 'pull_body' ? 'remediation' : 'audit',
+        anchorStrategy: isRemediation ? 'remediation' : 'audit',
     });
     const reportTotals = totalsFromBatchReports(batchReports);
     const totalFindings = Math.max(normalized.findings ?? 0, reportTotals.findings);
     const totalFixes = Math.max(normalized.fixes ?? 0, reportTotals.fixes);
     const totalChanges = Math.max(normalized.changes ?? 0, reportTotals.changes);
+    const totalCommentSlots = isRemediation
+        ? Math.max(totalFindings, totalFixes, totalChanges)
+        : totalFindings;
     const allRules = batchReports.flatMap(({ report }) => report.spec?.rules ?? []);
     const candidates = capAuditCommentCandidates({
         candidates: candidatesRaw,
         rules: allRules,
-        totalFindingsCap: totalFindings,
+        totalFindingsCap: totalCommentSlots,
+        perRuleLimit: isRemediation ? countRuleRemediationSlots : countRuleFindings,
     });
     if (candidatesRaw.length !== candidates.length) {
-        console.log(`Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report findings=${totalFindings})`);
+        console.log(`Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report slots=${totalCommentSlots})`);
     }
-    const unanchored = Math.max(0, totalFindings - candidates.length);
+    const unanchored = Math.max(0, totalCommentSlots - candidates.length);
     const scanCompleted = batchReports.length > 0;
-    const isRemediation = summaryTarget === 'pull_body';
     if (isRemediation) {
         for (const [file, lines] of diffChangedLines) {
             console.log(`Remediation diff lines for ${file}: ${lines.length} commentable line(s)`);
@@ -286,13 +332,13 @@ export async function publishAuditFeedback(args) {
             console.log(`Remediation comment plan: ${count} comment(s) on ${file}`);
         }
     }
-    console.log(`Inline comment planning: findings=${totalFindings}, candidates=${candidates.length}, scannable=${scannableFiles.length}`);
+    console.log(`Inline comment planning: findings=${totalFindings}, fixes=${totalFixes}, candidates=${candidates.length}, scannable=${scannableFiles.length}`);
     const { posted, skipped, postedCommentIds, activeDedupeKeys } = await postInlineComments({
         github,
         owner,
         repo,
         pullNumber,
-        headSha,
+        headSha: commentHeadSha,
         candidates,
         maxComments,
         portalServiceUrl,

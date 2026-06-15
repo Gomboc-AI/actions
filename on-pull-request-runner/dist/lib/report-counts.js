@@ -5,6 +5,13 @@ export function countRuleFindings(rule) {
         return n;
     return rule.finding_locations?.length ?? 0;
 }
+/** Inline comment slots on remediation PRs (findings may be 0 after ORL applies fixes). */
+export function countRuleRemediationSlots(rule) {
+    const findings = countRuleFindings(rule);
+    if (findings > 0)
+        return findings;
+    return Math.max(rule.fixes ?? 0, rule.changes ?? 0, 0);
+}
 function totalsFromRules(rules) {
     let findings = 0;
     let fixes = 0;

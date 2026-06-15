@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
   countRuleFindings,
+  countRuleRemediationSlots,
   totalsFromReport,
 } from '../dist/lib/report-counts.js';
 
@@ -30,5 +31,25 @@ describe('report-counts', () => {
     assert.equal(totals.findings, 1);
     assert.equal(totals.fixes, 1);
     assert.equal(totals.changes, 1);
+  });
+
+  it('countRuleRemediationSlots falls back to fixes when findings are cleared', () => {
+    assert.equal(
+      countRuleRemediationSlots({
+        name: 'rule',
+        findings: 0,
+        fixes: 3,
+        changes: 1,
+      }),
+      3
+    );
+    assert.equal(
+      countRuleRemediationSlots({
+        name: 'rule',
+        findings: 2,
+        fixes: 5,
+      }),
+      2
+    );
   });
 });
