@@ -36,13 +36,13 @@ export function pullRequestUrl(pr) {
     return pullRequestUrlForNumber(pr.repository, pr.number);
 }
 /** Builds Integrations `scmContext` for a GitHub pull request scan. */
-export function buildGitHubScmContext(pr, resultingPullRequest) {
+export function buildGitHubScmContext(originalPullRequest, resultingPullRequest) {
     const scmContext = {
         scmType: 'GITHUB',
         originalPullRequest: {
-            id: String(pr.number),
-            url: pullRequestUrl(pr),
-            author: pr.authorLogin,
+            id: String(originalPullRequest.number),
+            url: pullRequestUrl(originalPullRequest),
+            author: originalPullRequest.authorLogin,
         },
     };
     if (resultingPullRequest) {
