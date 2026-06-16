@@ -220,16 +220,6 @@ runs:
       working-directory: ${{ github.action_path }}
       run: node dist/normalize-report.js
 
-    - name: Post Integrations
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
-        INTEGRATIONS_SERVICE_URL: ${{ inputs.integrations-service-url }}
-        INPUT_INTEGRATIONS_ENABLED: ${{ inputs.integrations-enabled }}
-      run: node dist/post-integrations.js
-
     - name: Publish audit comments
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success' && inputs.mode == 'audit'
       shell: bash
@@ -243,6 +233,7 @@ runs:
       run: node dist/publish-audit-comments.js
 
     - name: Open remediation PR
+      id: open-remediation-pr
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success' && inputs.mode == 'remediate'
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -254,6 +245,17 @@ runs:
         INPUT_COMMENT_MAX_PER_PR: ${{ inputs.comment-max-per-pr }}
         INPUT_PORTAL_SERVICE_URL: ${{ inputs.portal-service-url }}
       run: node dist/open-remediation-pr.js
+
+    - name: Post Integrations
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
+        INTEGRATIONS_SERVICE_URL: ${{ inputs.integrations-service-url }}
+        INPUT_INTEGRATIONS_ENABLED: ${{ inputs.integrations-enabled }}
+        INPUT_MODE: ${{ inputs.mode }}
+      run: node dist/post-integrations.js
 
     - name: Upload ORL artifacts
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'

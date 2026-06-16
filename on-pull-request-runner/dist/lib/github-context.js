@@ -26,4 +26,41 @@ export function loadPullRequestContext() {
         authorLogin: pr.user?.login?.trim() ?? '',
     };
 }
+/** Canonical pull request URL for GitHub.com or GHES. */
+export function pullRequestUrlForNumber(repository, number) {
+    const server = process.env.GITHUB_SERVER_URL ?? 'https://github.com';
+    return `${server}/${repository}/pull/${number}`;
+}
+/** Canonical pull request URL for GitHub.com or GHES. */
+export function pullRequestUrl(pr) {
+    return pullRequestUrlForNumber(pr.repository, pr.number);
+}
+/** Builds Integrations `scmContext` for a GitHub pull request scan. */
+export function buildGitHubScmContext(pr, resultingPullRequest) {
+    const scmContext = {
+        scmType: 'GITHUB',
+        originalPullRequest: {
+            id: String(pr.number),
+            url: pullRequestUrl(pr),
+            author: pr.authorLogin,
+        },
+    };
+    if (resultingPullRequest) {
+        scmContext.resultingPullRequest = resultingPullRequest;
+    }
+    return scmContext;
+}
+/** Parses a remediation PR artifact into Integrations SCM shape. */
+export function parseScmPullRequestRef(value) {
+    if (!value || typeof value !== 'object')
+        return undefined;
+    const ref = value;
+    if (typeof ref.id !== 'string' || !ref.id.trim())
+        return undefined;
+    if (typeof ref.url !== 'string' || !ref.url.trim())
+        return undefined;
+    if (typeof ref.author !== 'string' || !ref.author.trim())
+        return undefined;
+    return { id: ref.id, url: ref.url, author: ref.author };
+}
 //# sourceMappingURL=github-context.js.map

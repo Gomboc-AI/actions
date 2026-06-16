@@ -2,7 +2,11 @@
  * Builds Integrations `createOrlReportEvent` request bodies for GitHub Actions.
  */
 import type { CreateOrlReportEventRequestBody } from '@gomboc-ai/gomboc-node-sdk';
-import type { PullRequestContext } from './github-context.js';
+import {
+  buildGitHubScmContext,
+  type PullRequestContext,
+  type ScmPullRequestRef,
+} from './github-context.js';
 import type {
   IntegrationsOrlReport,
   IntegrationsOrlReportGitHub,
@@ -14,6 +18,8 @@ export function buildCreateOrlReportEventBody(args: {
   path: string;
   branch: string;
   github: PullRequestContext;
+  durationInSeconds: number;
+  resultingPullRequest?: ScmPullRequestRef;
 }): CreateOrlReportEventRequestBody {
   const github: IntegrationsOrlReportGitHub = {
     repository: args.github.repository,
@@ -38,5 +44,7 @@ export function buildCreateOrlReportEventBody(args: {
       },
     ],
     errors: [],
+    durationInSeconds: args.durationInSeconds,
+    scmContext: buildGitHubScmContext(args.github, args.resultingPullRequest),
   };
 }

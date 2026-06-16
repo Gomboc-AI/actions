@@ -1,3 +1,4 @@
+import { buildGitHubScmContext, } from './github-context.js';
 /** Builds a typed Integrations ORL report event for GitHub Actions PR scans. */
 export function buildCreateOrlReportEventBody(args) {
     const github = {
@@ -21,6 +22,8 @@ export function buildCreateOrlReportEventBody(args) {
             },
         ],
         errors: [],
+        durationInSeconds: args.durationInSeconds,
+        scmContext: buildGitHubScmContext(args.github, args.resultingPullRequest),
     };
 }
 //# sourceMappingURL=build-orl-report-event.js.map

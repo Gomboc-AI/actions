@@ -311,6 +311,24 @@ async function main(): Promise<void> {
     sourcePullNumber: pr.number,
     sourceHeadRef: pr.headRef,
   });
+
+  const remediationIdentity = await github.getPullRequestIdentity({
+    owner,
+    repo,
+    pullNumber: remediationPullNumber,
+  });
+  fs.writeFileSync(
+    artifactPath('remediation-pr.json'),
+    JSON.stringify(
+      {
+        id: String(remediationIdentity.number),
+        url: remediationIdentity.html_url,
+        author: remediationIdentity.authorLogin,
+      },
+      null,
+      2
+    )
+  );
 }
 
 runMain(main);

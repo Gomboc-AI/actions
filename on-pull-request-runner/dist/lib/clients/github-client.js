@@ -105,6 +105,16 @@ export class GitHubClient {
         const { owner, repo } = args;
         return this.request('GET', `/repos/${owner}/${repo}/pulls?state=open&per_page=100`);
     }
+    /** Loads pull request identity fields for Integrations SCM context. */
+    async getPullRequestIdentity(args) {
+        const { owner, repo, pullNumber } = args;
+        const pr = await this.request('GET', `/repos/${owner}/${repo}/pulls/${pullNumber}`);
+        return {
+            number: pr.number,
+            html_url: pr.html_url,
+            authorLogin: pr.user?.login?.trim() || 'github-actions[bot]',
+        };
+    }
     /** Opens a pull request stacked into the feature branch. */
     async createPullRequest(args) {
         const { owner, repo, title, head, base, body } = args;

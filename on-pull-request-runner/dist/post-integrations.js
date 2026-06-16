@@ -8,9 +8,22 @@ import { appendActionNotice, integrationsErrorMessage, } from './lib/action-noti
 import { buildCreateOrlReportEventBody } from './lib/build-orl-report-event.js';
 import { envBool, requireEnv } from './lib/env.js';
 import { appendStepSummary } from './lib/github-output.js';
-import { loadPullRequestContext } from './lib/github-context.js';
+import { loadPullRequestContext, parseScmPullRequestRef, } from './lib/github-context.js';
 import { tenantIdFromToken } from './lib/jwt.js';
 import { runMain } from './lib/runner.js';
+function loadResultingPullRequest() {
+    const mode = (process.env.INPUT_MODE ?? '').trim();
+    if (mode !== 'remediate')
+        return undefined;
+    const remediationPrPath = artifactPath('remediation-pr.json');
+    if (!fs.existsSync(remediationPrPath))
+        return undefined;
+    const parsed = parseScmPullRequestRef(JSON.parse(fs.readFileSync(remediationPrPath, 'utf8')));
+    if (!parsed) {
+        console.warn('remediation-pr.json is present but invalid; omitting resultingPullRequest');
+    }
+    return parsed;
+}
 async function main() {
     if (!envBool('INPUT_INTEGRATIONS_ENABLED', true)) {
         console.log('Integrations disabled; skipping POST');
@@ -30,11 +43,19 @@ async function main() {
     const batches = JSON.parse(fs.readFileSync(artifactPath('evaluation-batches.json'), 'utf8'));
     const paths = [...new Set(batches.batches.map((b) => b.workspacePath))];
     const reportPath = paths.length === 1 ? paths[0] : '.';
+    const runComplete = JSON.parse(fs.readFileSync(artifactPath('run-complete.json'), 'utf8'));
+    const durationInSeconds = runComplete.durationInSeconds;
+    if (typeof durationInSeconds !== 'number' || durationInSeconds < 0) {
+        throw new Error('run-complete.json is missing durationInSeconds; cannot POST to Integrations');
+    }
+    const resultingPullRequest = loadResultingPullRequest();
     const body = buildCreateOrlReportEventBody({
         orlReport,
         path: reportPath,
         branch: pr.headRef || process.env.GITHUB_REF_NAME || '',
         github: pr,
+        durationInSeconds,
+        resultingPullRequest,
     });
     const sdk = await initIntegrationsServiceSdk({
         accessToken: token,

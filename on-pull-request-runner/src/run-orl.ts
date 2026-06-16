@@ -129,6 +129,7 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
 }
 
 async function main(): Promise<void> {
+  const startedAt = Date.now();
   const batches = loadBatches();
   const image = requireEnv('ORL_IMAGE');
   const workspaceRoot = requireEnv('GITHUB_WORKSPACE');
@@ -203,9 +204,17 @@ async function main(): Promise<void> {
   }
   appendStepSummary(summary);
 
+  const durationInSeconds = Math.max(
+    0,
+    Math.round((Date.now() - startedAt) / 1000)
+  );
   fs.writeFileSync(
     path.join(getArtifactsRoot(), 'run-complete.json'),
-    JSON.stringify({ ok: !outcome.hadExecutionFailure }, null, 2)
+    JSON.stringify(
+      { ok: !outcome.hadExecutionFailure, durationInSeconds },
+      null,
+      2
+    )
   );
 
   if (outcome.hadExecutionFailure) {
