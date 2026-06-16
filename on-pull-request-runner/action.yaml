@@ -303,8 +303,23 @@ runs:
           --allowedTools "Bash,Read,Grep,LS,Skill,Agent" \
           2>&1 | tee "$AGENT_OUTPUT"
 
+    - name: Capture applied CSPM changes
+      if: steps.cspm-agent.outcome != 'skipped'
+      continue-on-error: true
+      shell: bash
+      run: |
+        PATCH="${{ runner.temp }}/gomboc-orl/cspm-changes.patch"
+        git -C "${{ github.workspace }}" diff > "$PATCH" 2>/dev/null || true
+        if [ -s "$PATCH" ]; then
+          echo "Applied changes captured ($(wc -l < "$PATCH") lines) — available in the gomboc-orl-report artifact."
+        else
+          echo "No workspace changes to capture."
+          rm -f "$PATCH"
+        fi
+
     - name: CSPM triage summary
       id: cspm-summary
+      continue-on-error: true
       if: steps.cspm-agent.outcome != 'skipped'
       shell: bash
       run: |
@@ -342,35 +357,34 @@ runs:
         VIOLATIONS_FOUND=$(_get VIOLATIONS_FOUND)
         DEFERRED_REASON=$(_get DEFERRED_REASON)
 
-        {
-          echo "### Gomboc CSPM Triage"
-          echo ""
-          echo "| Field | Value |"
-          echo "|---|---|"
-          echo "| Status | $STATUS |"
-          if [ "$STATUS" = "success" ]; then
-            echo "| Tier | $TIER |"
-            echo "| Confidence | $CONFIDENCE |"
-            echo "| Control ID | \`$CONTROL_ID\` |"
-            echo "| Severity | $SEVERITY |"
-            echo "| Rule | \`$RULE_NAME\` |"
-            echo "| Rule released | $RULE_RELEASED |"
-            echo "| Remediation type | $REMEDIATION_TYPE |"
-            echo "| Files scanned | $FILES_SCANNED |"
-            echo "| Violations found | $VIOLATIONS_FOUND |"
-            if [ "$REMEDIATION_TYPE" = "REMEDIATION_WITH_INPUT" ]; then
-              echo ""
-              echo "Note: partial fix. Output contains USER_INPUT_N placeholders. Operator-supplied values required before merge."
-            fi
-          elif [ "$STATUS" = "deferred" ]; then
-            echo "| Candidates evaluated | $CANDIDATES |"
-            echo "| Reason | $DEFERRED_REASON |"
-            echo ""
-            echo "No actionable alert found for this PR's workspaces. Manual triage recommended."
-          else
-            echo "| Reason | $DEFERRED_REASON |"
+        S="$GITHUB_STEP_SUMMARY"
+        echo "### Gomboc CSPM Triage" >> "$S"
+        echo "" >> "$S"
+        echo "| Field | Value |" >> "$S"
+        echo "|---|---|" >> "$S"
+        echo "| Status | $STATUS |" >> "$S"
+        if [ "$STATUS" = "success" ]; then
+          echo "| Tier | $TIER |" >> "$S"
+          echo "| Confidence | $CONFIDENCE |" >> "$S"
+          echo "| Control ID | $CONTROL_ID |" >> "$S"
+          echo "| Severity | $SEVERITY |" >> "$S"
+          echo "| Rule | $RULE_NAME |" >> "$S"
+          echo "| Rule released | $RULE_RELEASED |" >> "$S"
+          echo "| Remediation type | $REMEDIATION_TYPE |" >> "$S"
+          echo "| Files scanned | $FILES_SCANNED |" >> "$S"
+          echo "| Violations found | $VIOLATIONS_FOUND |" >> "$S"
+          if [ "$REMEDIATION_TYPE" = "REMEDIATION_WITH_INPUT" ]; then
+            echo "" >> "$S"
+            echo "Note: partial fix. Output contains USER_INPUT_N placeholders. Operator-supplied values required before merge." >> "$S"
           fi
-        } >> "$GITHUB_STEP_SUMMARY"
+        elif [ "$STATUS" = "deferred" ]; then
+          echo "| Candidates evaluated | $CANDIDATES |" >> "$S"
+          echo "| Reason | $DEFERRED_REASON |" >> "$S"
+          echo "" >> "$S"
+          echo "No actionable alert found for this PR's workspaces. Manual triage recommended." >> "$S"
+        else
+          echo "| Reason | $DEFERRED_REASON |" >> "$S"
+        fi
 
         echo "status=$STATUS" >> "$GITHUB_OUTPUT"
         echo "control-id=$CONTROL_ID" >> "$GITHUB_OUTPUT"
@@ -412,7 +426,7 @@ runs:
       run: node dist/open-remediation-pr.js
 
     - name: Upload ORL artifacts
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && (steps.run-orl.outcome == 'success' || github.event_name == 'workflow_dispatch')
+      if: "!cancelled() && steps.its-gomboc.outputs.its_gomboc == 'false' && (steps.run-orl.outcome == 'success' || github.event_name == 'workflow_dispatch')"
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
       with:
         name: gomboc-orl-report
