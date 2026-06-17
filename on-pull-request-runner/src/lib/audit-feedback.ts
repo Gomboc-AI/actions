@@ -525,19 +525,17 @@ export async function publishAuditFeedback(
   }
 
   const prScannableFiles = new Set(scannableFiles);
-  const diffChangedLines = isRemediation
-    ? new Map<string, number[]>()
-    : await buildCommentableLinesMap({
-        github,
-        owner,
-        repo,
-        pullNumber,
-        scannable: scannableFiles,
-        baseSha: diffBaseSha,
-        headSha: commentHeadSha,
-        cwd: workspaceRoot,
-        mergePullPatches: false,
-      });
+  const diffChangedLines = await buildCommentableLinesMap({
+    github,
+    owner,
+    repo,
+    pullNumber,
+    scannable: scannableFiles,
+    baseSha: diffBaseSha,
+    headSha: commentHeadSha,
+    cwd: workspaceRoot,
+    mergePullPatches: isRemediation,
+  });
 
   const batchReports = loadBatchReportsWithWorkspace();
   const batchDiagnostics = loadBatchDiagnostics();
@@ -585,7 +583,7 @@ export async function publishAuditFeedback(
     );
     if (candidatesRaw.length === 0) {
       console.warn(
-        '[remediation-comments] no candidates — check batch logs above for missing resolved_location or scannable path mismatches'
+        '[remediation-comments] no candidates — check batch logs above (resolved_location, files_changed paths, or remediation diff lines)'
       );
     }
     for (const candidate of candidates) {

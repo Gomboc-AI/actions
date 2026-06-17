@@ -278,19 +278,17 @@ export async function publishAuditFeedback(args) {
         }
     }
     const prScannableFiles = new Set(scannableFiles);
-    const diffChangedLines = isRemediation
-        ? new Map()
-        : await buildCommentableLinesMap({
-            github,
-            owner,
-            repo,
-            pullNumber,
-            scannable: scannableFiles,
-            baseSha: diffBaseSha,
-            headSha: commentHeadSha,
-            cwd: workspaceRoot,
-            mergePullPatches: false,
-        });
+    const diffChangedLines = await buildCommentableLinesMap({
+        github,
+        owner,
+        repo,
+        pullNumber,
+        scannable: scannableFiles,
+        baseSha: diffBaseSha,
+        headSha: commentHeadSha,
+        cwd: workspaceRoot,
+        mergePullPatches: isRemediation,
+    });
     const batchReports = loadBatchReportsWithWorkspace();
     const batchDiagnostics = loadBatchDiagnostics();
     const { batches } = loadJson(artifactPath('evaluation-batches.json'));
@@ -324,7 +322,7 @@ export async function publishAuditFeedback(args) {
     if (isRemediation) {
         console.log(`[remediation-comments] candidates raw=${candidatesRaw.length} after_cap=${candidates.length} comment_slots=${totalCommentSlots} unanchored=${unanchored}`);
         if (candidatesRaw.length === 0) {
-            console.warn('[remediation-comments] no candidates — check batch logs above for missing resolved_location or scannable path mismatches');
+            console.warn('[remediation-comments] no candidates — check batch logs above (resolved_location, files_changed paths, or remediation diff lines)');
         }
         for (const candidate of candidates) {
             console.log(`[remediation-comments] plan: ${candidate.filePath}:${candidate.line} (${candidate.ruleName})`);
