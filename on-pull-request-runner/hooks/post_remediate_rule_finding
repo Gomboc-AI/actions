@@ -1,0 +1,39 @@
+#!/usr/bin/env sh
+set -eu
+
+. "$(dirname "$0")/common.sh"
+
+RULE_NAME="$1"
+FINDING_FILES="$3"
+WORKSPACE="$4"
+
+cd "$WORKSPACE"
+
+changed_paths=""
+for path in $(gomboc_git diff --name-only HEAD 2>/dev/null || true); do
+  changed_paths="$changed_paths $path"
+done
+for path in $(gomboc_git ls-files --others --exclude-standard 2>/dev/null || true); do
+  changed_paths="$changed_paths $path"
+done
+
+# Trim leading space and collapse duplicates.
+seen=""
+unique_changed=""
+for path in $changed_paths; do
+  [ -n "$path" ] || continue
+  case " $seen " in
+    *" $path "*) continue ;;
+  esac
+  seen="$seen $path"
+  unique_changed="$unique_changed $path"
+done
+
+if [ -z "$(printf '%s' "$unique_changed" | tr -d ' ')" ]; then
+  exit 0
+fi
+
+message=$(gomboc_commit_message "$RULE_NAME" "$FINDING_FILES" "$unique_changed")
+gomboc_git add $unique_changed
+gomboc_git commit -m "$message"
+gomboc_append_manifest "$RULE_NAME" "$message" "$unique_changed"

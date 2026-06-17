@@ -6,7 +6,7 @@ import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
 import { totalsFromReport } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';
-import type { OrlReport } from './types.js';
+import type { IntegrationsOrlReport, OrlReport } from './types.js';
 
 const DROP_ANNOTATION_KEYS = [
   'example',
@@ -34,18 +34,23 @@ function filterAnnotations(
   return Object.keys(out).length ? out : undefined;
 }
 
-export function normalizeOrlReport(report: OrlReport): Record<string, unknown> {
+export function normalizeOrlReport(report: OrlReport): IntegrationsOrlReport {
   const spec = report.spec;
   const totals = totalsFromReport(report);
+  const displayName = report.metadata.display_name?.trim();
+
+  const metadata: IntegrationsOrlReport['metadata'] = {
+    name: report.metadata.name,
+    description: trimDescription(report.metadata.description),
+    ...(displayName
+      ? { annotations: { display_name: displayName } }
+      : {}),
+  };
 
   return {
     type: 'Report',
     version: 'v1',
-    metadata: {
-      name: report.metadata.name,
-      display_name: report.metadata.display_name,
-      description: trimDescription(report.metadata.description),
-    },
+    metadata,
     workspace: spec.workspace ?? '.',
     language: spec.language ?? 'unknown',
     rules_applied: spec.rules_applied ?? spec.rules?.length ?? 0,

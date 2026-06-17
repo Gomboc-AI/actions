@@ -16,7 +16,7 @@ inputs:
   orl-version:
     description: ORL Docker image tag (used when orl-image is empty)
     required: false
-    default: 'v1.3.8'
+    default: 'v1.3.9-latest'
   orl-image:
     description: Full Docker image ref; overrides orl-version when set
     required: false
@@ -41,6 +41,10 @@ inputs:
     description: Timeout for each ORL remediate docker run (seconds)
     required: false
     default: '90'
+  orl-timeout:
+    description: ORL global --timeout value (e.g. 10m, 90s); empty = no limit
+    required: false
+    default: ''
   rules-cache-ttl-hours:
     description: Max age before rules cache is refreshed (hours)
     required: false
@@ -211,6 +215,7 @@ runs:
         GITHUB_ACTION_PATH: ${{ github.action_path }}
         ORL_RULES_DIR: ${{ runner.temp }}/orl-rules
         INPUT_SCAN_TIMEOUT_SECONDS: ${{ inputs.scan-timeout-seconds }}
+        INPUT_ORL_TIMEOUT: ${{ inputs.orl-timeout }}
         ORL_REMEDIATE_CONCURRENCY: '3'
       run: node dist/run-orl.js
 
@@ -219,16 +224,6 @@ runs:
       shell: bash
       working-directory: ${{ github.action_path }}
       run: node dist/normalize-report.js
-
-    - name: Post Integrations
-      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
-      shell: bash
-      working-directory: ${{ github.action_path }}
-      env:
-        GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
-        INTEGRATIONS_SERVICE_URL: ${{ inputs.integrations-service-url }}
-        INPUT_INTEGRATIONS_ENABLED: ${{ inputs.integrations-enabled }}
-      run: node dist/post-integrations.js
 
     - name: Publish audit comments
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success' && inputs.mode == 'audit'
@@ -243,6 +238,7 @@ runs:
       run: node dist/publish-audit-comments.js
 
     - name: Open remediation PR
+      id: open-remediation-pr
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success' && inputs.mode == 'remediate'
       shell: bash
       working-directory: ${{ github.action_path }}
@@ -254,6 +250,17 @@ runs:
         INPUT_COMMENT_MAX_PER_PR: ${{ inputs.comment-max-per-pr }}
         INPUT_PORTAL_SERVICE_URL: ${{ inputs.portal-service-url }}
       run: node dist/open-remediation-pr.js
+
+    - name: Post Integrations
+      if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
+        INTEGRATIONS_SERVICE_URL: ${{ inputs.integrations-service-url }}
+        INPUT_INTEGRATIONS_ENABLED: ${{ inputs.integrations-enabled }}
+        INPUT_MODE: ${{ inputs.mode }}
+      run: node dist/post-integrations.js
 
     - name: Upload ORL artifacts
       if: steps.its-gomboc.outputs.its_gomboc == 'false' && steps.run-orl.outcome == 'success'

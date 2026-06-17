@@ -14,7 +14,7 @@ import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-repor
 import { formatScoreLabel, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
 import { portalRuleUrl } from './portal-url.js';
 import { resolveScannablePath } from './scannable-path.js';
-import { countRuleFindings } from './report-counts.js';
+import { countRuleFindings, countRuleRemediationSlots } from './report-counts.js';
 import { compareRulesByImpactRisk } from './rule-metadata.js';
 
 export const AUDIT_COMMENT_MARKER = '<!-- gomboc-orl-audit -->';
@@ -73,6 +73,12 @@ export type ExtractAuditCommentsArgs = {
   prScannableFiles: Set<string>;
   /** PR diff changed lines per scannable file (fallback when report has path but no line). */
   diffChangedLines?: Map<string, number[]>;
+  /**
+   * `audit`: anchor at ORL finding locations (`original_location`) on the source PR.
+   * `remediation`: anchor at `finding_locations[].resolved_location` (requires ORL
+   * `--include-location-info`).
+   */
+  anchorStrategy?: 'audit' | 'remediation';
 };
 
 function ruleMeta(rule: OrlReportRule): {
@@ -109,7 +115,12 @@ function anchorFromLocation(loc: OrlLocation): {
 }
 
 function locationFromFindingRow(row: OrlFindingLocationRow): OrlLocation | null {
-  return row.resolved_location ?? row.original_location ?? null;
+  return row.original_location ?? row.resolved_location ?? null;
+}
+
+/** Post-remediation fix location from the ORL report (remediation PR comments only). */
+function fixLocationFromFindingRow(row: OrlFindingLocationRow): OrlLocation | null {
+  return row.resolved_location ?? null;
 }
 
 function lineFromReportEntry(entry: unknown): {
@@ -183,12 +194,20 @@ function lineFromDiagnostics(args: {
 
       for (const h of file.hunks ?? []) {
         if (typeof h.startLine === 'number' && h.startLine > 0) {
-          return { line: h.startLine, startLine: h.startLine, endLine: h.endLine };
+          return {
+            line: h.startLine,
+            startLine: h.startLine,
+            endLine: typeof h.endLine === 'number' ? h.endLine : undefined,
+          };
         }
       }
       for (const r of file.resources ?? []) {
         if (typeof r.startLine === 'number' && r.startLine > 0) {
-          return { line: r.startLine, startLine: r.startLine, endLine: r.endLine };
+          return {
+            line: r.startLine,
+            startLine: r.startLine,
+            endLine: typeof r.endLine === 'number' ? r.endLine : undefined,
+          };
         }
       }
     }
@@ -233,6 +252,7 @@ type AnchorAttempt = {
   scannablePath: string;
   anchor: { line: number; startLine?: number; endLine?: number };
   dedupeKey: string;
+  ruleName?: string;
 };
 
 /** One inline comment per rule × file × line (ignores finding row id). */
@@ -242,6 +262,85 @@ export function canonicalAnchorDedupeKey(
   line: number
 ): string {
   return `${ruleName}:${scannablePath}:${line}`;
+}
+
+/** One inline comment per finding on remediation PRs. */
+export function remediationFindingDedupeKey(
+  ruleName: string,
+  findingId: string,
+  scannablePath: string
+): string {
+  return `${ruleName}:${findingId}:${scannablePath}`;
+}
+
+function buildRemediationCandidatesFromResolvedLocations(args: {
+  rule: OrlReportRule;
+  workspacePath: string;
+  prScannableFiles: Set<string>;
+}): AuditCommentCandidate[] {
+  const { rule, workspacePath, prScannableFiles } = args;
+  const meta = ruleMeta(rule);
+  const candidates: AuditCommentCandidate[] = [];
+
+  for (const row of rule.finding_locations ?? []) {
+    const loc = fixLocationFromFindingRow(row);
+    if (!loc?.file_path) continue;
+
+    const repoPath = reportPathToRepoPath({
+      reportPath: loc.file_path,
+      workspacePath,
+    });
+    const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+    if (!scannablePath) continue;
+
+    const anchor = anchorFromLocation(loc);
+    if (!anchor) continue;
+
+    candidates.push({
+      dedupeKey: remediationFindingDedupeKey(
+        rule.name,
+        row.id || `${rule.name}-finding`,
+        scannablePath
+      ),
+      ruleName: rule.name,
+      displayName: meta.displayName,
+      description: meta.description,
+      impact: meta.impact,
+      impactStatement: meta.impactStatement,
+      risk: meta.risk,
+      riskStatement: meta.riskStatement,
+      filePath: scannablePath,
+      line: anchor.line,
+      startLine: anchor.startLine,
+      endLine: anchor.endLine,
+    });
+  }
+
+  return candidates;
+}
+
+function buildRemediationCandidatesForBatch(args: {
+  rules: OrlReportRule[];
+  workspacePath: string;
+  prScannableFiles: Set<string>;
+}): AuditCommentCandidate[] {
+  const { rules, workspacePath, prScannableFiles } = args;
+  const candidates: AuditCommentCandidate[] = [];
+
+  for (const rule of rules) {
+    const slotLimit = countRuleRemediationSlots(rule);
+    if (slotLimit <= 0) continue;
+
+    candidates.push(
+      ...buildRemediationCandidatesFromResolvedLocations({
+        rule,
+        workspacePath,
+        prScannableFiles,
+      }).slice(0, slotLimit)
+    );
+  }
+
+  return candidates;
 }
 
 function tryFindingLocationRows(args: {
@@ -326,14 +425,41 @@ function tryLegacyPaths(args: {
 export function extractAuditCommentCandidates(
   args: ExtractAuditCommentsArgs
 ): AuditCommentCandidate[] {
-  const { batchReports, batchDiagnostics, prScannableFiles, diffChangedLines } = args;
+  const {
+    batchReports,
+    batchDiagnostics,
+    prScannableFiles,
+    diffChangedLines,
+    anchorStrategy = 'audit',
+  } = args;
   const seen = new Set<string>();
   const candidates: AuditCommentCandidate[] = [];
 
   for (const { batchId, workspacePath, report } of batchReports) {
     const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
+    const batchRules = report.spec?.rules ?? [];
 
-    for (const rule of report.spec?.rules ?? []) {
+    if (anchorStrategy === 'remediation') {
+      const rulesWithFixes = batchRules.filter(
+        (rule) => countRuleRemediationSlots(rule) > 0
+      );
+
+      const remediationCandidates = buildRemediationCandidatesForBatch({
+        rules: rulesWithFixes,
+        workspacePath,
+        prScannableFiles,
+      });
+
+      for (const candidate of remediationCandidates) {
+        if (seen.has(candidate.dedupeKey)) continue;
+        seen.add(candidate.dedupeKey);
+        candidates.push(candidate);
+      }
+
+      continue;
+    }
+
+    for (const rule of batchRules) {
       if (countRuleFindings(rule) <= 0 && !(rule.finding_locations?.length ?? 0)) {
         if (pathsFromRule(rule).length === 0) continue;
       }
@@ -388,8 +514,9 @@ export function capAuditCommentCandidates(args: {
   candidates: AuditCommentCandidate[];
   rules: OrlReportRule[];
   totalFindingsCap?: number;
+  perRuleLimit?: (rule: OrlReportRule) => number;
 }): AuditCommentCandidate[] {
-  const { candidates, rules, totalFindingsCap } = args;
+  const { candidates, rules, totalFindingsCap, perRuleLimit = countRuleFindings } = args;
   const rulesByName = new Map(rules.map((r) => [r.name, r]));
 
   const sorted = [...candidates].sort((a, b) => {
@@ -409,7 +536,7 @@ export function capAuditCommentCandidates(args: {
 
   for (const candidate of sorted) {
     const rule = rulesByName.get(candidate.ruleName);
-    const limit = rule ? countRuleFindings(rule) : 0;
+    const limit = rule ? perRuleLimit(rule) : 0;
     if (limit <= 0) continue;
 
     const posted = perRulePosted.get(candidate.ruleName) ?? 0;

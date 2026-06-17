@@ -1,7 +1,7 @@
 /**
  * Minimal GitHub REST API client for PR comments and future review APIs.
  */
-import { requireEnv } from './env.js';
+import { requireEnv } from '../env.js';
 const API_VERSION = '2022-11-28';
 /** Splits `owner/repo` from `GITHUB_REPOSITORY`. */
 export function parseOwnerRepo(repository) {
@@ -90,10 +90,30 @@ export class GitHubClient {
         const { owner, repo, commentId } = args;
         await this.request('DELETE', `/repos/${owner}/${repo}/pulls/comments/${commentId}`);
     }
+    /** Fetches pull request metadata including resolved base/head SHAs. */
+    async getPullRequest(args) {
+        const { owner, repo, pullNumber } = args;
+        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pullNumber}`);
+    }
+    /** Lists files changed in a pull request (includes unified diff patches). */
+    async listPullRequestFiles(args) {
+        const { owner, repo, pullNumber } = args;
+        return this.request('GET', `/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100`);
+    }
     /** Lists open pull requests for dedupe checks (first page). */
     async listOpenPullRequests(args) {
         const { owner, repo } = args;
         return this.request('GET', `/repos/${owner}/${repo}/pulls?state=open&per_page=100`);
+    }
+    /** Loads pull request identity fields for Integrations SCM context. */
+    async getPullRequestIdentity(args) {
+        const { owner, repo, pullNumber } = args;
+        const pr = await this.request('GET', `/repos/${owner}/${repo}/pulls/${pullNumber}`);
+        return {
+            number: pr.number,
+            html_url: pr.html_url,
+            authorLogin: pr.user?.login?.trim() || 'github-actions[bot]',
+        };
     }
     /** Opens a pull request stacked into the feature branch. */
     async createPullRequest(args) {

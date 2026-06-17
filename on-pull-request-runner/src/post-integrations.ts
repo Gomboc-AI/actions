@@ -2,16 +2,41 @@
  * Composite step: POST normalized scan payload to Gomboc Integrations (non-blocking on failure).
  */
 import fs from 'node:fs';
+import { initIntegrationsServiceSdk } from '@gomboc-ai/gomboc-node-sdk';
 import { artifactPath } from './lib/artifacts.js';
 import {
   appendActionNotice,
   integrationsErrorMessage,
 } from './lib/action-notices.js';
-import { envBool } from './lib/env.js';
+import { buildCreateOrlReportEventBody } from './lib/build-orl-report-event.js';
+import { envBool, requireEnv } from './lib/env.js';
 import { appendStepSummary } from './lib/github-output.js';
-import { loadPullRequestContext } from './lib/github-context.js';
+import {
+  loadPullRequestContext,
+  parseScmPullRequestRef,
+  type ScmPullRequestRef,
+} from './lib/github-context.js';
+import { tenantIdFromToken } from './lib/jwt.js';
+import type { IntegrationsOrlReport } from './types.js';
 import { runMain } from './lib/runner.js';
-import { requireEnv } from './lib/env.js';
+
+function loadResultingPullRequest(): ScmPullRequestRef | undefined {
+  const mode = (process.env.INPUT_MODE ?? '').trim();
+  if (mode !== 'remediate') return undefined;
+
+  const remediationPrPath = artifactPath('remediation-pr.json');
+  if (!fs.existsSync(remediationPrPath)) return undefined;
+
+  const parsed = parseScmPullRequestRef(
+    JSON.parse(fs.readFileSync(remediationPrPath, 'utf8'))
+  );
+  if (!parsed) {
+    console.warn(
+      'remediation-pr.json is present but invalid; omitting resultingPullRequest'
+    );
+  }
+  return parsed;
+}
 
 async function main(): Promise<void> {
   if (!envBool('INPUT_INTEGRATIONS_ENABLED', true)) {
@@ -20,11 +45,20 @@ async function main(): Promise<void> {
   }
 
   const token = requireEnv('GOMBOC_ACCESS_TOKEN');
-  const baseUrl = requireEnv('INTEGRATIONS_SERVICE_URL').replace(/\/$/, '');
+  const accountId = tenantIdFromToken(token);
+  if (!accountId) {
+    const message =
+      'GOMBOC_ACCESS_TOKEN is missing tenantId; cannot initialize Integrations SDK';
+    appendActionNotice({ level: 'error', source: 'integrations', message });
+    appendStepSummary(`### Integrations warning\n\n${message}\n`);
+    console.warn(message);
+    return;
+  }
+
   const pr = loadPullRequestContext();
-  const normalized = JSON.parse(
+  const orlReport = JSON.parse(
     fs.readFileSync(artifactPath('normalized-report.json'), 'utf8')
-  ) as Record<string, unknown>;
+  ) as IntegrationsOrlReport;
 
   const batches = JSON.parse(
     fs.readFileSync(artifactPath('evaluation-batches.json'), 'utf8')
@@ -33,68 +67,56 @@ async function main(): Promise<void> {
   const paths = [...new Set(batches.batches.map((b) => b.workspacePath))];
   const reportPath = paths.length === 1 ? paths[0] : '.';
 
-  const body = {
-    version: 1.0,
-    requestOrigin: 'GITHUB_ACTION',
-    effect: 'SubmitForReview',
-    reports: [
-      {
-        path: reportPath,
-        branch: pr.headRef || process.env.GITHUB_REF_NAME || '',
-        orlReport: normalized,
-        github: {
-          repository: pr.repository,
-          prNumber: pr.number,
-          headSha: pr.headSha,
-        },
-      },
-    ],
-    errors: [] as Array<{ status: number; message: string }>,
-  };
-
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-
-  try {
-    const res = await fetch(`${baseUrl}/reporting/orl-external`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    if (!res.ok) {
-      const text = await res.text();
-      const message = integrationsErrorMessage(res.status, text);
-      appendActionNotice({
-        level: res.status === 401 || res.status === 403 ? 'error' : 'warning',
-        source: 'integrations',
-        status: res.status,
-        message,
-      });
-      appendStepSummary(
-        `### Integrations warning\n\nPOST failed (${res.status}): ${text.slice(0, 500)}\n`
-      );
-      console.warn(`Integrations POST failed: ${res.status} ${text}`);
-      return;
-    }
-
-    console.log('Integrations POST succeeded');
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    appendActionNotice({
-      level: 'warning',
-      source: 'integrations',
-      message,
-    });
-    appendStepSummary(`### Integrations warning\n\n${message}\n`);
-    console.warn(`Integrations POST error: ${message}`);
-  } finally {
-    clearTimeout(timeout);
+  const runComplete = JSON.parse(
+    fs.readFileSync(artifactPath('run-complete.json'), 'utf8')
+  ) as { durationInSeconds?: number };
+  const durationInSeconds = runComplete.durationInSeconds;
+  if (typeof durationInSeconds !== 'number' || durationInSeconds < 0) {
+    throw new Error(
+      'run-complete.json is missing durationInSeconds; cannot POST to Integrations'
+    );
   }
+
+  const resultingPullRequest = loadResultingPullRequest();
+
+  const body = buildCreateOrlReportEventBody({
+    orlReport,
+    path: reportPath,
+    branch: pr.headRef || process.env.GITHUB_REF_NAME || '',
+    github: pr,
+    durationInSeconds,
+    resultingPullRequest,
+  });
+
+  const sdk = await initIntegrationsServiceSdk({
+    accessToken: token,
+    accountId,
+    baseUrl: requireEnv('INTEGRATIONS_SERVICE_URL').replace(/\/$/, ''),
+    logger: console,
+  });
+
+  const result = await sdk.createOrlReportEvent(body);
+
+  if (result.isOk()) {
+    console.log('Integrations POST succeeded');
+    return;
+  }
+
+  const error = result.error;
+  const status = error.statusCode ?? 400;
+  const responseBody = JSON.stringify({ error });
+  const message = integrationsErrorMessage(status, responseBody);
+
+  appendActionNotice({
+    level: status === 401 || status === 403 ? 'error' : 'warning',
+    source: 'integrations',
+    status,
+    message,
+  });
+  appendStepSummary(
+    `### Integrations warning\n\nPOST failed (${status}): ${responseBody.slice(0, 500)}\n`
+  );
+  console.warn(`Integrations POST failed: ${status} ${responseBody}`);
 }
 
 runMain(main);

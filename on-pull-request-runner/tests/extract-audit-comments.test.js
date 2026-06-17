@@ -540,4 +540,303 @@ describe('extract-audit-comments', () => {
       [10, 20]
     );
   });
+
+  it('anchors remediation comments at resolved_location from the ORL report', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 1,
+              fixes: 1,
+              changes: 1,
+              rules: [
+                {
+                  name: 'orl-rule:fix-line',
+                  metadata: { name: 'orl-rule:fix-line' },
+                  findings: 1,
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      original_location: {
+                        id: 'orig',
+                        file_path: 'main.tf',
+                        start_line: 5,
+                        start_column: 0,
+                      },
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'main.tf',
+                        start_line: 55,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                  files_changed: { 'main.tf': { line: 8 } },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].line, 55);
+  });
+
+  it('skips remediation rows without resolved_location', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 3,
+              fixes: 3,
+              changes: 3,
+              rules: [
+                {
+                  name: 'orl-rule:legacy-only',
+                  metadata: { name: 'orl-rule:legacy-only' },
+                  findings: 3,
+                  paths_with_findings: { 'main.tf': { line: 10 } },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 0);
+  });
+
+  it('uses resolved_location lines from the ORL report for remediation', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 2,
+              fixes: 2,
+              changes: 2,
+              rules: [
+                {
+                  name: 'orl-rule:stacked',
+                  metadata: { name: 'orl-rule:stacked' },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                    {
+                      id: 'f2',
+                      resolved_location: {
+                        id: 'l2',
+                        file_path: 'main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 2);
+    assert.deepEqual(
+      candidates.map((c) => c.line).sort((a, b) => a - b),
+      [10, 10]
+    );
+  });
+
+  it('builds remediation comments only from resolved_location rows', () => {
+    const rule = {
+      name: 'orl-rule:fixed',
+      metadata: { name: 'orl-rule:fixed' },
+      findings: 0,
+      fixes: 2,
+      changes: 2,
+      files_changed: { 'main.tf': { line: 8 } },
+      finding_locations: [
+        {
+          id: 'f1',
+          resolved_location: {
+            id: 'l1',
+            file_path: 'main.tf',
+            start_line: 40,
+            start_column: 0,
+          },
+        },
+        {
+          id: 'f2',
+          resolved_location: {
+            id: 'l2',
+            file_path: 'main.tf',
+            start_line: 55,
+            start_column: 0,
+          },
+        },
+      ],
+    };
+
+    const raw = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 0,
+              fixes: 2,
+              changes: 2,
+              rules: [rule],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(raw.length, 2);
+    assert.deepEqual(
+      raw.map((c) => c.line).sort((a, b) => a - b),
+      [40, 55]
+    );
+
+    const capped = capAuditCommentCandidates({
+      candidates: raw,
+      rules: [rule],
+      totalFindingsCap: 2,
+      perRuleLimit: (r) => Math.max(r.fixes ?? 0, r.changes ?? 0),
+    });
+
+    assert.equal(capped.length, 2);
+  });
+
+  it('uses one remediation comment per finding_locations row with resolved_location', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: 'deploy/terraform/aws',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 2,
+              findings: 4,
+              fixes: 4,
+              changes: 4,
+              rules: [
+                {
+                  name: 'orl-rule:a',
+                  metadata: { name: 'orl-rule:a' },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'a1',
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'network-main.tf',
+                        start_line: 40,
+                        start_column: 0,
+                      },
+                    },
+                    {
+                      id: 'a2',
+                      resolved_location: {
+                        id: 'l2',
+                        file_path: 'network-main.tf',
+                        start_line: 55,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                },
+                {
+                  name: 'orl-rule:b',
+                  metadata: { name: 'orl-rule:b' },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'b1',
+                      resolved_location: {
+                        id: 'l3',
+                        file_path: 'network-main.tf',
+                        start_line: 70,
+                        start_column: 0,
+                      },
+                    },
+                    {
+                      id: 'b2',
+                      resolved_location: {
+                        id: 'l4',
+                        file_path: 'network-main.tf',
+                        start_line: 88,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['deploy/terraform/aws/network-main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 4);
+    assert.deepEqual(
+      candidates.map((c) => c.line).sort((a, b) => a - b),
+      [40, 55, 70, 88]
+    );
+  });
 });

@@ -1,7 +1,7 @@
 /**
  * Minimal GitHub REST API client for PR comments and future review APIs.
  */
-import { requireEnv } from './env.js';
+import { requireEnv } from '../env.js';
 
 const API_VERSION = '2022-11-28';
 
@@ -50,8 +50,19 @@ export type IssueComment = {
 export type PullRequestSummary = {
   number: number;
   state: string;
-  head: { ref: string };
-  base: { ref: string };
+  head: { ref: string; sha?: string };
+  base: { ref: string; sha?: string };
+};
+
+export type PullRequestDetail = {
+  number: number;
+  base: { sha: string };
+  head: { sha: string };
+};
+
+export type PullRequestFile = {
+  filename: string;
+  patch?: string;
 };
 
 export type CreatePullRequestArgs = {
@@ -199,6 +210,32 @@ export class GitHubClient {
     );
   }
 
+  /** Fetches pull request metadata including resolved base/head SHAs. */
+  async getPullRequest(args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+  }): Promise<PullRequestDetail> {
+    const { owner, repo, pullNumber } = args;
+    return this.request<PullRequestDetail>(
+      'GET',
+      `/repos/${owner}/${repo}/pulls/${pullNumber}`
+    );
+  }
+
+  /** Lists files changed in a pull request (includes unified diff patches). */
+  async listPullRequestFiles(args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+  }): Promise<PullRequestFile[]> {
+    const { owner, repo, pullNumber } = args;
+    return this.request<PullRequestFile[]>(
+      'GET',
+      `/repos/${owner}/${repo}/pulls/${pullNumber}/files?per_page=100`
+    );
+  }
+
   /** Lists open pull requests for dedupe checks (first page). */
   async listOpenPullRequests(args: {
     owner: string;
@@ -209,6 +246,25 @@ export class GitHubClient {
       'GET',
       `/repos/${owner}/${repo}/pulls?state=open&per_page=100`
     );
+  }
+
+  /** Loads pull request identity fields for Integrations SCM context. */
+  async getPullRequestIdentity(args: {
+    owner: string;
+    repo: string;
+    pullNumber: number;
+  }): Promise<{ number: number; html_url: string; authorLogin: string }> {
+    const { owner, repo, pullNumber } = args;
+    const pr = await this.request<{
+      number: number;
+      html_url: string;
+      user?: { login?: string };
+    }>('GET', `/repos/${owner}/${repo}/pulls/${pullNumber}`);
+    return {
+      number: pr.number,
+      html_url: pr.html_url,
+      authorLogin: pr.user?.login?.trim() || 'github-actions[bot]',
+    };
   }
 
   /** Opens a pull request stacked into the feature branch. */

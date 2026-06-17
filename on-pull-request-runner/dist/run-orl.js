@@ -24,7 +24,7 @@ function loadBatches() {
  * Stages one batch, runs `orl remediate` in Docker, and copies report/diagnostics to artifacts.
  */
 async function runBatch(args) {
-    const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs } = args;
+    const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs, orlTimeout, } = args;
     const { workDir, remediatePath, stagedFiles } = stageBatchWorkspace({
         batch,
         workspaceRoot,
@@ -34,6 +34,23 @@ async function runBatch(args) {
     const reportHost = path.join(workDir, '.orl', 'report.yaml');
     const { uid, gid } = currentUidGid();
     const containerName = `gomboc-orl-${batch.batchId}`;
+    const orlArgv = [
+        'remediate',
+        remediatePath,
+        '--hooks-dir',
+        '/workspace/.orl/hooks',
+        '--rulespace',
+        '/workspace/rules',
+        '--recursive-rulespace',
+        '--include-location-info',
+        '--language',
+        batch.orlLanguage,
+        '--out',
+        '/workspace/.orl/report.yaml',
+    ];
+    if (orlTimeout) {
+        orlArgv.push('--timeout', orlTimeout);
+    }
     const { status, stderr, stdout } = await dockerRun({
         argv: [
             'run',
@@ -47,17 +64,7 @@ async function runBatch(args) {
             '-v',
             `${rulesDir}:/workspace/rules:ro`,
             image,
-            'remediate',
-            remediatePath,
-            '--hooks-dir',
-            '/workspace/.orl/hooks',
-            '--rulespace',
-            '/workspace/rules',
-            '--recursive-rulespace',
-            '--language',
-            batch.orlLanguage,
-            '--out',
-            '/workspace/.orl/report.yaml',
+            ...orlArgv,
         ],
         timeoutMs,
         containerName,
@@ -101,6 +108,7 @@ async function runBatch(args) {
     };
 }
 async function main() {
+    const startedAt = Date.now();
     const batches = loadBatches();
     const image = requireEnv('ORL_IMAGE');
     const workspaceRoot = requireEnv('GITHUB_WORKSPACE');
@@ -110,6 +118,7 @@ async function main() {
     const hooksDir = path.join(actionPath, 'hooks');
     const batchWorkRoot = artifactPath('orl-workspace');
     const timeoutMs = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 90) * 1000;
+    const orlTimeout = (process.env.INPUT_ORL_TIMEOUT ?? '').trim() || undefined;
     const concurrency = envInt('ORL_REMEDIATE_CONCURRENCY', 3);
     fs.mkdirSync(batchWorkRoot, { recursive: true });
     const results = await mapPool({
@@ -123,6 +132,7 @@ async function main() {
             hooksDir,
             batchWorkRoot,
             timeoutMs,
+            orlTimeout,
         }),
     });
     const outcome = mergeBatchResults(results);
@@ -160,7 +170,8 @@ async function main() {
         }
     }
     appendStepSummary(summary);
-    fs.writeFileSync(path.join(getArtifactsRoot(), 'run-complete.json'), JSON.stringify({ ok: !outcome.hadExecutionFailure }, null, 2));
+    const durationInSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+    fs.writeFileSync(path.join(getArtifactsRoot(), 'run-complete.json'), JSON.stringify({ ok: !outcome.hadExecutionFailure, durationInSeconds }, null, 2));
     if (outcome.hadExecutionFailure) {
         throw new Error('One or more ORL remediate batches failed to execute (exit 1)');
     }

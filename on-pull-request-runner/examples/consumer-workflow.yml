@@ -29,6 +29,9 @@ jobs:
   # Uncomment for remediate mode (stacked remediation PR into the feature branch):
   #
   # orl-remediate:
+  #   if: |
+  #     !startsWith(github.event.pull_request.head.ref, 'gomboc/orl-remediation-') &&
+  #     github.event.pull_request.head.ref != 'gomboc/orl-remediation'
   #   runs-on: ubuntu-latest
   #   permissions:
   #     contents: write

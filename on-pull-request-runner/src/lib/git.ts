@@ -68,6 +68,12 @@ export function gitAddAll(cwd: string): void {
   git(['add', '-A'], cwd);
 }
 
+/** Stages the given repo-relative paths. */
+export function gitAddPaths(paths: string[], cwd: string): void {
+  if (!paths.length) return;
+  git(['add', '--', ...paths], cwd);
+}
+
 /** Creates a commit with the given message. */
 export function gitCommit(message: string, cwd: string): void {
   git(['commit', '-m', message], cwd);

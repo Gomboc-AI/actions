@@ -46,24 +46,31 @@ See [examples/consumer-workflow.yml](examples/consumer-workflow.yml).
 When ORL produces fixes, the action pushes a bot branch and opens a PR **into your feature branch** (stacked on the triggering PR):
 
 ```yaml
-permissions:
-  contents: write
-  pull-requests: write
-  packages: read
+jobs:
+  gomboc-orl:
+    # Skip stacked remediation PRs — they must not re-run remediate mode.
+    if: |
+      !startsWith(github.event.pull_request.head.ref, 'gomboc/orl-remediation-') &&
+      github.event.pull_request.head.ref != 'gomboc/orl-remediation'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      packages: read
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
-steps:
-  - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-    with:
-      ref: ${{ github.event.pull_request.head.sha }}
-      fetch-depth: 0
-
-  - uses: gomboc-ai/actions/on-pull-request-runner@main
-    with:
-      mode: remediate
-      remediation-branch-prefix: gomboc/orl-remediation
-    env:
-      GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
+      - uses: gomboc-ai/actions/on-pull-request-runner@main
+        with:
+          mode: remediate
+        env:
+          GOMBOC_ACCESS_TOKEN: ${{ secrets.GOMBOC_ACCESS_TOKEN }}
 ```
+
+The default bot branch prefix is `gomboc/orl-remediation` (`{prefix}-{pr_number}`). If you override `remediation-branch-prefix`, update the job `if` to match.
 
 **Fork PRs:** if the PR head repo differs from the base repo (`pull_request.head.repo.full_name != github.repository`), push is skipped with a warning. Do not use `pull_request_target` to work around this unless you understand the security tradeoffs.
 
@@ -71,7 +78,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 
 **When no remediation PR is opened:** the action copies ORL-modified files from the isolated batch workspace back into your checkout. If ORL reports `fixes=0` and `changes=0` (common with exit code 2 — findings remain), there is nothing to commit. Check the job log for `ORL report totals: findings=…, fixes=…, changes=…` and the `Open remediation PR` step output.
 
-**“CI&CD” or other PR labels:** those come from the Gomboc Integrations backend when `post-integrations` runs with `effect: SubmitForReview`. That step runs in both audit and remediate mode and is unrelated to opening a stacked remediation PR.
+**“CI&CD” or other PR labels:** those come from the Gomboc Integrations backend when `post-integrations` runs with `effect: SubmitForReview`. That step runs once after mode-specific work (audit comments or remediation PR), so remediate mode can include `scmContext.resultingPullRequest` when a remediation PR was opened.
 
 ## Supported features
 
@@ -91,9 +98,9 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 3. `git diff` PR base..head → scannable files and touch seeds
 4. `orl detect-language` per touch seed → touched workspaces
 5. Parallel `orl remediate` per workspace × language (default concurrency: 3)
-6. Merge reports → Integrations POST
-7. **Audit:** inline + summary PR comments → artifacts
-8. **Remediate:** copy fixes to checkout → push bot branch → open stacked PR → artifacts
+6. Merge reports → normalize report
+7. **Audit:** inline + summary PR comments → Integrations POST → artifacts
+8. **Remediate:** replay per-finding ORL hook commits onto bot branch (fallback: single commit) → push → open stacked PR → Integrations POST (includes `resultingPullRequest` when a remediation PR is opened) → artifacts
 
 ## Inputs
 
@@ -102,13 +109,14 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 | `mode` | *(required)* | `audit` or `remediate` |
 | `max-changed-files` | `50` | Max PR-changed paths; fails if exceeded |
 | `orl-channel` | `""` | Rules channel; empty = JWT `tenantId/accounts/default` |
-| `orl-version` | `v1.3.8` | ORL image tag when `orl-image` empty |
+| `orl-version` | `v1.3.9-latest` | ORL image tag when `orl-image` empty |
 | `orl-image` | `""` | Full Docker image ref override |
 | `rules-service-url` | `https://rules.app.gomboc.ai` | Rules service base URL |
 | `integrations-service-url` | `https://integrations.app.gomboc.ai` | Integrations base URL |
 | `portal-service-url` | `https://app.gomboc.ai` | Portal base URL for rule links in inline comments |
 | `integrations-enabled` | `true` | Set `false` to skip Integrations POST |
 | `scan-timeout-seconds` | `90` | Per-batch remediate timeout |
+| `orl-timeout` | `""` | ORL global `--timeout` (e.g. `10m`); empty = no limit |
 | `remediation-branch-prefix` | `gomboc/orl-remediation` | Bot branch prefix for remediate mode (`{prefix}-{pr_number}`) |
 | `comment-max-per-pr` | `50` | Max inline review comments per PR run (audit) |
 | `fail-on-findings` | `false` | Audit only: fail when findings or changes &gt; 0 |

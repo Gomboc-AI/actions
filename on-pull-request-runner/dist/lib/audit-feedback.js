@@ -7,8 +7,8 @@ import { artifactPath } from './artifacts.js';
 import { AUDIT_COMMENT_MARKER, capAuditCommentCandidates, extractAuditCommentCandidates, formatInlineCommentBody, isAuditCommentBody, parseAuditCommentDedupeKey, } from './extract-audit-comments.js';
 import { gitDiffChangedLines } from './git-diff-lines.js';
 import { formatScoreMarkdown, ruleImpactRisk, sortRulesByImpactRisk, } from './rule-metadata.js';
-import { formatRuleDisplayLink } from './portal-url.js';
-import { countRuleFindings, totalsFromBatchReports, } from './report-counts.js';
+import { formatRuleDisplayLink, portalRunUrl } from './portal-url.js';
+import { countRuleFindings, countRuleRemediationSlots, totalsFromBatchReports, } from './report-counts.js';
 import { formatActionNoticesSection, hasAuthFailureNotices, hasErrorNotices, loadActionNotices, } from './action-notices.js';
 function loadJson(file) {
     return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -127,6 +127,7 @@ export function formatAuditSummaryBody(args) {
     else {
         lines.push('', 'Full reports are in workflow artifacts (`gomboc-orl-report`).');
     }
+    lines.push('', `View this run in the [Gomboc Portal](${portalRunUrl(portalServiceUrl)})`);
     return lines.join('\n');
 }
 async function pruneStaleAuditComments(args) {
@@ -146,9 +147,6 @@ async function pruneStaleAuditComments(args) {
         const key = parseAuditCommentDedupeKey(body);
         let shouldRemove = false;
         if (key && activeDedupeKeys.has(key)) {
-            shouldRemove = true;
-        }
-        else if (activeDedupeKeys.size > 0) {
             shouldRemove = true;
         }
         else if (totalFindings === 0 && scanCompleted) {
@@ -218,13 +216,16 @@ async function upsertSummaryIssueComment(args) {
 export async function publishAuditFeedback(args) {
     const { github, owner, repo, pullNumber, headSha, baseSha, workspaceRoot, scannableFiles, portalServiceUrl, maxComments, summaryTarget, introLines, } = args;
     const normalized = loadJson(artifactPath('normalized-report.json'));
+    const isRemediation = summaryTarget === 'pull_body';
     const prScannableFiles = new Set(scannableFiles);
-    const diffChangedLines = buildDiffChangedLinesMap({
-        scannable: scannableFiles,
-        baseSha,
-        headSha,
-        cwd: workspaceRoot,
-    });
+    const diffChangedLines = isRemediation
+        ? undefined
+        : buildDiffChangedLinesMap({
+            scannable: scannableFiles,
+            baseSha,
+            headSha,
+            cwd: workspaceRoot,
+        });
     const batchReports = loadBatchReportsWithWorkspace();
     const batchDiagnostics = loadBatchDiagnostics();
     const { batches } = loadJson(artifactPath('evaluation-batches.json'));
@@ -234,23 +235,28 @@ export async function publishAuditFeedback(args) {
         batchDiagnostics,
         prScannableFiles,
         diffChangedLines,
+        anchorStrategy: isRemediation ? 'remediation' : 'audit',
     });
     const reportTotals = totalsFromBatchReports(batchReports);
     const totalFindings = Math.max(normalized.findings ?? 0, reportTotals.findings);
     const totalFixes = Math.max(normalized.fixes ?? 0, reportTotals.fixes);
     const totalChanges = Math.max(normalized.changes ?? 0, reportTotals.changes);
+    const totalCommentSlots = isRemediation
+        ? Math.max(totalFindings, totalFixes, totalChanges)
+        : totalFindings;
     const allRules = batchReports.flatMap(({ report }) => report.spec?.rules ?? []);
     const candidates = capAuditCommentCandidates({
         candidates: candidatesRaw,
         rules: allRules,
-        totalFindingsCap: totalFindings,
+        totalFindingsCap: totalCommentSlots,
+        perRuleLimit: isRemediation ? countRuleRemediationSlots : countRuleFindings,
     });
     if (candidatesRaw.length !== candidates.length) {
-        console.log(`Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report findings=${totalFindings})`);
+        console.log(`Capped inline comment candidates from ${candidatesRaw.length} to ${candidates.length} (report slots=${totalCommentSlots})`);
     }
-    const unanchored = Math.max(0, totalFindings - candidates.length);
+    const unanchored = Math.max(0, totalCommentSlots - candidates.length);
     const scanCompleted = batchReports.length > 0;
-    console.log(`Inline comment planning: findings=${totalFindings}, candidates=${candidates.length}, scannable=${scannableFiles.length}`);
+    console.log(`Inline comment planning: findings=${totalFindings}, fixes=${totalFixes}, candidates=${candidates.length}, scannable=${scannableFiles.length}`);
     const { posted, skipped, postedCommentIds, activeDedupeKeys } = await postInlineComments({
         github,
         owner,
