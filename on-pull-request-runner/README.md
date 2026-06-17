@@ -116,6 +116,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 | `portal-service-url` | `https://app.gomboc.ai` | Portal base URL for rule links in inline comments |
 | `integrations-enabled` | `true` | Set `false` to skip Integrations POST |
 | `scan-timeout-seconds` | `90` | Per-batch remediate timeout |
+| `orl-timeout` | `""` | ORL global `--timeout` (e.g. `10m`); empty = no limit |
 | `remediation-branch-prefix` | `gomboc/orl-remediation` | Bot branch prefix for remediate mode (`{prefix}-{pr_number}`) |
 | `comment-max-per-pr` | `50` | Max inline review comments per PR run (audit) |
 | `fail-on-findings` | `false` | Audit only: fail when findings or changes &gt; 0 |

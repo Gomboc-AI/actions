@@ -53,6 +53,33 @@ describe('merge-orl-results', () => {
     assert.doesNotMatch(outcome.warnings[0], /exited with code/);
   });
 
+  it('treats ORL timeout exit 1 as a warning, not a failure', () => {
+    const outcome = mergeBatchResults([
+      {
+        batchId: 'a',
+        workspacePath: 'infra',
+        orlLanguage: 'terraform',
+        exitCode: 1,
+        report: {
+          metadata: { name: 'r1' },
+          spec: {
+            rules_applied: 1,
+            findings: 1,
+            fixes: 0,
+            changes: 0,
+            rules: [],
+            errors: ['context deadline exceeded'],
+          },
+        },
+        diagnostics: null,
+      },
+    ]);
+
+    assert.equal(outcome.hadExecutionFailure, false);
+    assert.equal(outcome.warnings.length, 1);
+    assert.match(outcome.warnings[0], /configured timeout was reached/i);
+  });
+
   it('uses rule-level findings when spec findings is 0', () => {
     const outcome = mergeBatchResults([
       {

@@ -3,6 +3,10 @@
  */
 import type { OrlReport, OrlReportRule } from '../types.js';
 import { formatBatchExitWarning } from './orl-exit-codes.js';
+import {
+  formatBatchTimeoutWarning,
+  isOrlTimeoutResult,
+} from './orl-timeout.js';
 import { countRuleFindings } from './report-counts.js';
 
 /** Result of one parallel `orl remediate` docker invocation. */
@@ -43,14 +47,20 @@ function emptyReport(): OrlReport {
 /**
  * Sums counts and concatenates rules/errors/diagnostics across batches.
  * Exit code 1 on any batch sets `hadExecutionFailure`; 2/3 add warnings only.
+ * Exit code 1 from an ORL `--timeout` hit is treated as a warning only.
  */
 export function mergeBatchResults(results: BatchResult[]): MergeOutcome {
   const warnings: string[] = [];
   let hadExecutionFailure = false;
 
   for (const r of results) {
-    if (r.exitCode === 1) hadExecutionFailure = true;
-    if (r.exitCode === 2 || r.exitCode === 3) {
+    const timedOut = isOrlTimeoutResult({ error: r.error, report: r.report });
+    if (r.exitCode === 1 && !timedOut) {
+      hadExecutionFailure = true;
+    }
+    if (timedOut) {
+      warnings.push(formatBatchTimeoutWarning(r));
+    } else if (r.exitCode === 2 || r.exitCode === 3) {
       warnings.push(formatBatchExitWarning(r));
     }
   }

@@ -41,6 +41,10 @@ inputs:
     description: Timeout for each ORL remediate docker run (seconds)
     required: false
     default: '90'
+  orl-timeout:
+    description: ORL global --timeout value (e.g. 10m, 90s); empty = no limit
+    required: false
+    default: ''
   rules-cache-ttl-hours:
     description: Max age before rules cache is refreshed (hours)
     required: false
@@ -211,6 +215,7 @@ runs:
         GITHUB_ACTION_PATH: ${{ github.action_path }}
         ORL_RULES_DIR: ${{ runner.temp }}/orl-rules
         INPUT_SCAN_TIMEOUT_SECONDS: ${{ inputs.scan-timeout-seconds }}
+        INPUT_ORL_TIMEOUT: ${{ inputs.orl-timeout }}
         ORL_REMEDIATE_CONCURRENCY: '3'
       run: node dist/run-orl.js
 

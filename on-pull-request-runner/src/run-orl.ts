@@ -33,14 +33,24 @@ export type RunBatchArgs = {
   hooksDir: string;
   batchWorkRoot: string;
   timeoutMs: number;
+  /** ORL global `--timeout` value (e.g. `10ms`); omitted when unset. */
+  orlTimeout?: string;
 };
 
 /**
  * Stages one batch, runs `orl remediate` in Docker, and copies report/diagnostics to artifacts.
  */
 async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
-  const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs } =
-    args;
+  const {
+    batch,
+    image,
+    rulesDir,
+    workspaceRoot,
+    hooksDir,
+    batchWorkRoot,
+    timeoutMs,
+    orlTimeout,
+  } = args;
 
   const { workDir, remediatePath, stagedFiles } = stageBatchWorkspace({
     batch,
@@ -52,6 +62,23 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
   const reportHost = path.join(workDir, '.orl', 'report.yaml');
   const { uid, gid } = currentUidGid();
   const containerName = `gomboc-orl-${batch.batchId}`;
+
+  const orlArgv = [
+    'remediate',
+    remediatePath,
+    '--hooks-dir',
+    '/workspace/.orl/hooks',
+    '--rulespace',
+    '/workspace/rules',
+    '--recursive-rulespace',
+    '--language',
+    batch.orlLanguage,
+    '--out',
+    '/workspace/.orl/report.yaml',
+  ];
+  if (orlTimeout) {
+    orlArgv.push('--timeout', orlTimeout);
+  }
 
   const { status, stderr, stdout } = await dockerRun({
     argv: [
@@ -66,17 +93,7 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
       '-v',
       `${rulesDir}:/workspace/rules:ro`,
       image,
-      'remediate',
-      remediatePath,
-      '--hooks-dir',
-      '/workspace/.orl/hooks',
-      '--rulespace',
-      '/workspace/rules',
-      '--recursive-rulespace',
-      '--language',
-      batch.orlLanguage,
-      '--out',
-      '/workspace/.orl/report.yaml',
+      ...orlArgv,
     ],
     timeoutMs,
     containerName,
@@ -140,6 +157,7 @@ async function main(): Promise<void> {
   const hooksDir = path.join(actionPath, 'hooks');
   const batchWorkRoot = artifactPath('orl-workspace');
   const timeoutMs = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 90) * 1000;
+  const orlTimeout = (process.env.INPUT_ORL_TIMEOUT ?? '').trim() || undefined;
   const concurrency = envInt('ORL_REMEDIATE_CONCURRENCY', 3);
 
   fs.mkdirSync(batchWorkRoot, { recursive: true });
@@ -156,6 +174,7 @@ async function main(): Promise<void> {
         hooksDir,
         batchWorkRoot,
         timeoutMs,
+        orlTimeout,
       }),
   });
 
