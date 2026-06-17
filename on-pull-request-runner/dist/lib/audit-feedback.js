@@ -203,12 +203,19 @@ async function postInlineComments(args) {
         }
         const fileLines = commentableLinesByFile?.get(candidate.filePath) ?? [];
         const usedOnFile = usedLinesByFile.get(candidate.filePath) ?? new Set();
-        const primaryLine = fileLines.length > 0
-            ? snapToCommentableLine(candidate.line, fileLines) ?? fileLines[0]
-            : candidate.line;
-        const unusedFileLines = fileLines.filter((line) => line !== primaryLine && !usedOnFile.has(line));
+        const exactLine = candidate.line > 0 && fileLines.includes(candidate.line) ? candidate.line : null;
+        const primaryLine = exactLine ??
+            (fileLines.length > 0
+                ? snapToCommentableLine(candidate.line, fileLines) ?? fileLines[0]
+                : candidate.line);
+        const unusedFileLines = fileLines.filter((line) => line !== primaryLine && line !== exactLine && !usedOnFile.has(line));
         const lineCandidates = fileLines.length
-            ? [primaryLine, ...unusedFileLines, ...fileLines.filter((line) => line !== primaryLine)]
+            ? [
+                ...(exactLine != null ? [exactLine] : []),
+                primaryLine,
+                ...unusedFileLines,
+                ...fileLines.filter((line) => line !== primaryLine && line !== exactLine),
+            ]
             : [candidate.line];
         const uniqueLines = [...new Set(lineCandidates.filter((line) => line > 0))];
         let createdId = null;
@@ -268,14 +275,17 @@ export async function publishAuditFeedback(args) {
     const { github, owner, repo, pullNumber, headSha, baseSha, workspaceRoot, scannableFiles, portalServiceUrl, maxComments, summaryTarget, introLines, } = args;
     const normalized = loadJson(artifactPath('normalized-report.json'));
     const isRemediation = summaryTarget === 'pull_body';
-    let diffBaseSha = baseSha;
-    let commentHeadSha = headSha;
+    // Remediation diff anchors must match the branch we just built locally (feature tip → bot
+    // branch). GitHub PR metadata can lag behind push or diverge on stale PRs.
+    const diffBaseSha = baseSha;
+    const commentHeadSha = headSha;
     if (isRemediation) {
         const prMeta = await github.getPullRequest({ owner, repo, pullNumber });
-        diffBaseSha = prMeta.base.sha;
-        commentHeadSha = prMeta.head.sha;
-        if (commentHeadSha !== headSha) {
-            console.log(`Using remediation PR head ${commentHeadSha.slice(0, 7)} for inline comments (checkout ${headSha.slice(0, 7)})`);
+        if (prMeta.head.sha !== headSha) {
+            console.warn(`Remediation PR head ${prMeta.head.sha.slice(0, 7)} differs from checkout ${headSha.slice(0, 7)}; anchoring inline comments on checkout diff`);
+        }
+        if (prMeta.base.sha !== baseSha) {
+            console.warn(`Remediation PR base ${prMeta.base.sha.slice(0, 7)} differs from captured base ${baseSha.slice(0, 7)}; anchoring inline comments on captured base diff`);
         }
     }
     const prScannableFiles = new Set(scannableFiles);

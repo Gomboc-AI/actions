@@ -195,6 +195,22 @@ export function canonicalAnchorDedupeKey(ruleName, scannablePath, line) {
 export function remediationFindingDedupeKey(ruleName, findingId, scannablePath) {
     return `${ruleName}:${findingId}:${scannablePath}`;
 }
+/** Post-remediation fix line numbers from `files_changed` for one scannable path. */
+function linesFromFilesChanged(args) {
+    const lines = [];
+    for (const [path, entry] of Object.entries(args.rule.files_changed ?? {})) {
+        const repoPath = reportPathToRepoPath({
+            reportPath: path,
+            workspacePath: args.workspacePath,
+        });
+        if (repoPath !== args.scannablePath)
+            continue;
+        const line = lineFromReportEntry(entry)?.line;
+        if (line != null && line > 0)
+            lines.push(line);
+    }
+    return lines;
+}
 function preferredLineFromFindingRow(args) {
     const loc = locationFromFindingRow(args.row);
     const fromLoc = loc ? anchorFromLocation(loc)?.line : null;
@@ -250,29 +266,8 @@ export function assignRemediationAnchorLines(args) {
         if (preferred > 0 && sortedChanged.includes(preferred) && !used.has(preferred)) {
             line = preferred;
         }
-        else if (preferred > 0) {
-            let bestDist = Number.POSITIVE_INFINITY;
-            for (const candidate of sortedChanged) {
-                if (used.has(candidate))
-                    continue;
-                const dist = Math.abs(candidate - preferred);
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    line = candidate;
-                }
-            }
-        }
         if (line == null) {
             line = sortedChanged.find((candidate) => !used.has(candidate)) ?? null;
-        }
-        if (line == null) {
-            line = sortedChanged.reduce((closest, candidate) => {
-                if (closest == null)
-                    return candidate;
-                const preferredDist = Math.abs(candidate - preferred);
-                const closestDist = Math.abs(closest - preferred);
-                return preferredDist < closestDist ? candidate : closest;
-            }, null);
         }
         if (line == null)
             continue;
@@ -340,11 +335,9 @@ function collectRemediationPending(args) {
                     workspacePath,
                 });
                 scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-                preferredLine = anchorFromLocation(loc)?.line ?? null;
             }
             if (!scannablePath && legacyFallback) {
                 scannablePath = legacyFallback.scannablePath;
-                preferredLine = legacyFallback.preferredLine;
             }
             if (!scannablePath)
                 continue;
@@ -353,11 +346,28 @@ function collectRemediationPending(args) {
                 ruleName: rule.name,
                 repoPath: scannablePath,
             });
+            const filesChangedLines = linesFromFilesChanged({
+                rule,
+                workspacePath,
+                scannablePath,
+            });
             if (diagnosticLines[index] != null) {
                 preferredLine = diagnosticLines[index];
             }
             else if (diagnosticLines.length === 1) {
                 preferredLine = diagnosticLines[0];
+            }
+            else if (filesChangedLines[index] != null) {
+                preferredLine = filesChangedLines[index];
+            }
+            else if (filesChangedLines.length === 1) {
+                preferredLine = filesChangedLines[0];
+            }
+            else if (loc) {
+                preferredLine = anchorFromLocation(loc)?.line ?? null;
+            }
+            else if (legacyFallback) {
+                preferredLine = legacyFallback.preferredLine;
             }
             if (preferredLine == null) {
                 preferredLine = preferredLineFromFindingRow({

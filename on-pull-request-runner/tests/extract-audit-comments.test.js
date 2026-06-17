@@ -686,6 +686,54 @@ describe('extract-audit-comments', () => {
     assert.equal(capped.length, 2);
   });
 
+  it('prefers files_changed fix lines over finding_locations for remediation anchors', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 1,
+              fixes: 1,
+              changes: 1,
+              rules: [
+                {
+                  name: 'orl-rule:fix-line',
+                  metadata: { name: 'orl-rule:fix-line' },
+                  findings: 1,
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'main.tf',
+                        start_line: 10,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                  files_changed: { 'main.tf': { line: 55 } },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      diffChangedLines: new Map([['main.tf', [40, 55, 70]]]),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].line, 55);
+  });
+
   it('distributes remediation anchors across PR diff lines instead of stacking', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
