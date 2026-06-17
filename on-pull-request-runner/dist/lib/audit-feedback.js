@@ -7,7 +7,7 @@ import { artifactPath } from './artifacts.js';
 import { AUDIT_COMMENT_MARKER, capAuditCommentCandidates, extractAuditCommentCandidates, formatInlineCommentBody, isAuditCommentBody, parseAuditCommentDedupeKey, } from './extract-audit-comments.js';
 import { gitDiffChangedLines, parsePatchCommentableLines, snapToCommentableLine } from './git-diff-lines.js';
 import { formatScoreMarkdown, ruleImpactRisk, sortRulesByImpactRisk, } from './rule-metadata.js';
-import { formatRuleDisplayLink } from './portal-url.js';
+import { formatRuleDisplayLink, portalRunUrl } from './portal-url.js';
 import { countRuleFindings, countRuleRemediationSlots, totalsFromBatchReports, } from './report-counts.js';
 import { formatActionNoticesSection, hasAuthFailureNotices, hasErrorNotices, loadActionNotices, } from './action-notices.js';
 function loadJson(file) {
@@ -153,6 +153,7 @@ export function formatAuditSummaryBody(args) {
     else {
         lines.push('', 'Full reports are in workflow artifacts (`gomboc-orl-report`).');
     }
+    lines.push('', `View this run in the [Gomboc Portal](${portalRunUrl(portalServiceUrl)})`);
     return lines.join('\n');
 }
 async function pruneStaleAuditComments(args) {

@@ -21,7 +21,7 @@ import {
   ruleImpactRisk,
   sortRulesByImpactRisk,
 } from './rule-metadata.js';
-import { formatRuleDisplayLink } from './portal-url.js';
+import { formatRuleDisplayLink, portalRunUrl } from './portal-url.js';
 import {
   countRuleFindings,
   countRuleRemediationSlots,
@@ -275,6 +275,12 @@ export function formatAuditSummaryBody(args: {
   } else {
     lines.push('', 'Full reports are in workflow artifacts (`gomboc-orl-report`).');
   }
+
+  lines.push(
+    '',
+    `View this run in the [Gomboc Portal](${portalRunUrl(portalServiceUrl)})`
+  );
+
   return lines.join('\n');
 }
 

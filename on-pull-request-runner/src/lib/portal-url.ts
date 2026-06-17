@@ -29,6 +29,12 @@ export function portalRuleUrl(args: PortalRuleUrlArgs): string {
   return `${base}/data-library/rules/${segments.join('/')}`;
 }
 
+/** Portal runs page URL for the current assessment. */
+export function portalRunUrl(portalBaseUrl: string): string {
+  const base = portalBaseUrl.trim().replace(/\/+$/, '');
+  return `${base}/runs/`;
+}
+
 export function formatRuleDisplayLink(args: {
   displayName: string;
   ruleName: string;
