@@ -467,9 +467,13 @@ function remediationLineFromFilesChangedEntry(args: {
 
   const diffLines = args.diffChangedLines?.get(args.scannablePath) ?? [];
   const unusedDiff = diffLines.find((line) => !args.usedLinesOnFile.has(line));
-  const line = unusedDiff ?? firstDiffLine(args.diffChangedLines, args.scannablePath);
-  if (line == null) return null;
-  return { line, startLine: line };
+  if (unusedDiff != null) {
+    return { line: unusedDiff, startLine: unusedDiff };
+  }
+  if (diffLines.length > 0) {
+    return { line: diffLines[diffLines.length - 1]!, startLine: diffLines[diffLines.length - 1]! };
+  }
+  return null;
 }
 
 function buildRemediationCandidatesFromResolvedLocations(args: {
@@ -525,12 +529,19 @@ function buildRemediationCandidatesFromFilesChanged(args: {
   diagnostics: DiagnosticsShape | null;
   diffChangedLines?: Map<string, number[]>;
   slotLimit: number;
+  sharedUsedLinesByFile: Map<string, Set<number>>;
 }): AuditCommentCandidate[] {
-  const { rule, workspacePath, prScannableFiles, diagnostics, diffChangedLines, slotLimit } =
-    args;
+  const {
+    rule,
+    workspacePath,
+    prScannableFiles,
+    diagnostics,
+    diffChangedLines,
+    slotLimit,
+    sharedUsedLinesByFile,
+  } = args;
   const meta = ruleMeta(rule);
   const candidates: AuditCommentCandidate[] = [];
-  const usedLinesByFile = new Map<string, Set<number>>();
 
   for (const [path, entry] of Object.entries(rule.files_changed ?? {})) {
     if (candidates.length >= slotLimit) break;
@@ -539,7 +550,7 @@ function buildRemediationCandidatesFromFilesChanged(args: {
     const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
     if (!scannablePath) continue;
 
-    const usedOnFile = usedLinesByFile.get(scannablePath) ?? new Set<number>();
+    const usedOnFile = sharedUsedLinesByFile.get(scannablePath) ?? new Set<number>();
     const anchor = remediationLineFromFilesChangedEntry({
       entry,
       ruleName: rule.name,
@@ -551,7 +562,7 @@ function buildRemediationCandidatesFromFilesChanged(args: {
     if (!anchor) continue;
 
     usedOnFile.add(anchor.line);
-    usedLinesByFile.set(scannablePath, usedOnFile);
+    sharedUsedLinesByFile.set(scannablePath, usedOnFile);
 
     candidates.push({
       dedupeKey: remediationFindingDedupeKey(rule.name, `${path}:${anchor.line}`, scannablePath),
@@ -581,6 +592,7 @@ function buildRemediationCandidatesForBatch(args: {
 }): AuditCommentCandidate[] {
   const { rules, workspacePath, prScannableFiles, diagnostics, diffChangedLines } = args;
   const candidates: AuditCommentCandidate[] = [];
+  const sharedUsedLinesByFile = new Map<string, Set<number>>();
 
   for (const rule of rules) {
     const slotLimit = countRuleRemediationSlots(rule);
@@ -604,6 +616,7 @@ function buildRemediationCandidatesForBatch(args: {
         diagnostics,
         diffChangedLines,
         slotLimit,
+        sharedUsedLinesByFile,
       })
     );
   }

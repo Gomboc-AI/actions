@@ -679,6 +679,56 @@ describe('extract-audit-comments', () => {
     assert.equal(byFile['deploy/terraform/aws/rds-main.tf'], 12);
   });
 
+  it('assigns distinct diff lines when multiple rules share a files_changed path', () => {
+    const ruleA = {
+      name: 'orl-rule:a',
+      metadata: { name: 'orl-rule:a' },
+      findings: 0,
+      fixes: 1,
+      changes: 1,
+      files_changed: { 'main.tf': {} },
+    };
+    const ruleB = {
+      name: 'orl-rule:b',
+      metadata: { name: 'orl-rule:b' },
+      findings: 0,
+      fixes: 1,
+      changes: 1,
+      files_changed: { 'main.tf': {} },
+    };
+
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 2,
+              findings: 0,
+              fixes: 2,
+              changes: 2,
+              rules: [ruleA, ruleB],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      diffChangedLines: new Map([['main.tf', [40, 55, 70]]]),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 2);
+    assert.deepEqual(
+      candidates.map((c) => c.line).sort((a, b) => a - b),
+      [40, 55]
+    );
+  });
+
   it('uses resolved_location lines from the ORL report for remediation', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
