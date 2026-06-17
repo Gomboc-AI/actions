@@ -14,7 +14,7 @@ import {
   type AuditCommentCandidate,
   type DiagnosticsShape,
 } from './extract-audit-comments.js';
-import { gitDiffChangedLines, parsePatchCommentableLines, snapToCommentableLine } from './git-diff-lines.js';
+import { gitDiffChangedLines, parsePatchCommentableLines } from './git-diff-lines.js';
 import type { GitHubClient } from './clients/github-client.js';
 import {
   formatScoreMarkdown,
@@ -348,7 +348,6 @@ async function postInlineComments(args: {
   candidates: AuditCommentCandidate[];
   maxComments: number;
   portalServiceUrl: string;
-  commentableLinesByFile?: Map<string, number[]>;
 }): Promise<{
   posted: number;
   skipped: number;
@@ -364,13 +363,11 @@ async function postInlineComments(args: {
     candidates,
     maxComments,
     portalServiceUrl,
-    commentableLinesByFile,
   } = args;
   let posted = 0;
   let skipped = 0;
   const postedCommentIds = new Set<number>();
   const activeDedupeKeys = new Set<string>();
-  const usedLinesByFile = new Map<string, Set<number>>();
 
   for (const candidate of candidates) {
     if (posted >= maxComments) {
@@ -378,69 +375,27 @@ async function postInlineComments(args: {
       break;
     }
 
-    const fileLines = commentableLinesByFile?.get(candidate.filePath) ?? [];
-    const usedOnFile = usedLinesByFile.get(candidate.filePath) ?? new Set<number>();
-    const exactLine =
-      candidate.line > 0 && fileLines.includes(candidate.line) ? candidate.line : null;
-    const primaryLine =
-      exactLine ??
-      (fileLines.length > 0
-        ? snapToCommentableLine(candidate.line, fileLines) ?? fileLines[0]!
-        : candidate.line);
-    const unusedFileLines = fileLines.filter(
-      (line) => line !== primaryLine && line !== exactLine && !usedOnFile.has(line)
-    );
-    const lineCandidates = fileLines.length
-      ? [
-          ...(exactLine != null ? [exactLine] : []),
-          primaryLine,
-          ...unusedFileLines,
-          ...fileLines.filter((line) => line !== primaryLine && line !== exactLine),
-        ]
-      : [candidate.line];
-    const uniqueLines = [...new Set(lineCandidates.filter((line) => line > 0))];
-
-    let createdId: number | null = null;
-    let postedLine: number | null = null;
-
-    for (const line of uniqueLines) {
-      if (usedOnFile.has(line) && uniqueLines.length > 1) continue;
-
-      try {
-        const created = await github.createPullReviewComment({
-          owner,
-          repo,
-          pullNumber,
-          commitId: headSha,
-          path: candidate.filePath,
-          line,
-          startLine: line,
-          body: formatInlineCommentBody(
-            { ...candidate, line, startLine: line },
-            { portalServiceUrl }
-          ),
-        });
-        createdId = created.id;
-        postedLine = line;
-        break;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        console.warn(
-          `Skipped inline comment ${candidate.filePath}:${line} (${candidate.ruleName}): ${message}`
-        );
-      }
-    }
-
-    if (createdId == null || postedLine == null) {
+    try {
+      const created = await github.createPullReviewComment({
+        owner,
+        repo,
+        pullNumber,
+        commitId: headSha,
+        path: candidate.filePath,
+        line: candidate.line,
+        startLine: candidate.startLine,
+        body: formatInlineCommentBody(candidate, { portalServiceUrl }),
+      });
+      postedCommentIds.add(created.id);
+      activeDedupeKeys.add(candidate.dedupeKey);
+      posted++;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `Skipped inline comment ${candidate.filePath}:${candidate.line} (${candidate.ruleName}): ${message}`
+      );
       skipped++;
-      continue;
     }
-
-    postedCommentIds.add(createdId);
-    activeDedupeKeys.add(candidate.dedupeKey);
-    usedOnFile.add(postedLine);
-    usedLinesByFile.set(candidate.filePath, usedOnFile);
-    posted++;
   }
 
   return { posted, skipped, postedCommentIds, activeDedupeKeys };
@@ -540,17 +495,19 @@ export async function publishAuditFeedback(
   }
 
   const prScannableFiles = new Set(scannableFiles);
-  const diffChangedLines = await buildCommentableLinesMap({
-    github,
-    owner,
-    repo,
-    pullNumber,
-    scannable: scannableFiles,
-    baseSha: diffBaseSha,
-    headSha: commentHeadSha,
-    cwd: workspaceRoot,
-    mergePullPatches: isRemediation,
-  });
+  const diffChangedLines = isRemediation
+    ? new Map<string, number[]>()
+    : await buildCommentableLinesMap({
+        github,
+        owner,
+        repo,
+        pullNumber,
+        scannable: scannableFiles,
+        baseSha: diffBaseSha,
+        headSha: commentHeadSha,
+        cwd: workspaceRoot,
+        mergePullPatches: false,
+      });
 
   const batchReports = loadBatchReportsWithWorkspace();
   const batchDiagnostics = loadBatchDiagnostics();
@@ -593,18 +550,10 @@ export async function publishAuditFeedback(
   const scanCompleted = batchReports.length > 0;
 
   if (isRemediation) {
-    for (const [file, lines] of diffChangedLines) {
+    for (const candidate of candidates) {
       console.log(
-        `Remediation diff lines for ${file}: ${lines.length} commentable line(s)`
+        `Remediation comment plan: ${candidate.filePath}:${candidate.line} (${candidate.ruleName})`
       );
-    }
-    const assignedLines = candidates.reduce((acc, c) => {
-      const key = c.filePath;
-      acc.set(key, (acc.get(key) ?? 0) + 1);
-      return acc;
-    }, new Map<string, number>());
-    for (const [file, count] of assignedLines) {
-      console.log(`Remediation comment plan: ${count} comment(s) on ${file}`);
     }
   }
 
@@ -622,7 +571,6 @@ export async function publishAuditFeedback(
       candidates,
       maxComments,
       portalServiceUrl,
-      commentableLinesByFile: isRemediation ? diffChangedLines : undefined,
     });
 
   const removed = await pruneStaleAuditComments({

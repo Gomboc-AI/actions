@@ -40,7 +40,11 @@ function anchorFromLocation(loc) {
     };
 }
 function locationFromFindingRow(row) {
-    return row.resolved_location ?? row.original_location ?? null;
+    return row.original_location ?? row.resolved_location ?? null;
+}
+/** Post-remediation fix location from the ORL report (remediation PR comments only). */
+function fixLocationFromFindingRow(row) {
+    return row.resolved_location ?? null;
 }
 function lineFromReportEntry(entry) {
     if (entry == null)
@@ -195,227 +199,30 @@ export function canonicalAnchorDedupeKey(ruleName, scannablePath, line) {
 export function remediationFindingDedupeKey(ruleName, findingId, scannablePath) {
     return `${ruleName}:${findingId}:${scannablePath}`;
 }
-/** Post-remediation fix line numbers from `files_changed` for one scannable path. */
-function linesFromFilesChanged(args) {
-    const lines = [];
-    for (const [path, entry] of Object.entries(args.rule.files_changed ?? {})) {
-        const repoPath = reportPathToRepoPath({
-            reportPath: path,
-            workspacePath: args.workspacePath,
-        });
-        if (repoPath !== args.scannablePath)
-            continue;
-        const line = lineFromReportEntry(entry)?.line;
-        if (line != null && line > 0)
-            lines.push(line);
-    }
-    return lines;
-}
-function preferredLineFromFindingRow(args) {
-    const loc = locationFromFindingRow(args.row);
-    const fromLoc = loc ? anchorFromLocation(loc)?.line : null;
-    if (fromLoc)
-        return fromLoc;
-    for (const { path, entry } of pathsFromRule(args.rule)) {
-        const repoPath = reportPathToRepoPath({
-            reportPath: path,
-            workspacePath: args.workspacePath,
-        });
-        if (repoPath !== args.scannablePath)
-            continue;
-        const fromEntry = lineFromReportEntry(entry)?.line;
-        if (fromEntry)
-            return fromEntry;
-    }
-    const fromDiag = lineFromDiagnostics({
-        diagnostics: args.diagnostics,
-        ruleName: args.rule.name,
-        repoPath: args.scannablePath,
-    })?.line;
-    return fromDiag ?? null;
-}
-/**
- * Maps each finding to a distinct changed line in the PR diff when possible.
- * Exported for tests.
- */
-function assignPreferredLinesWithoutDiff(args) {
-    const used = new Set();
-    return args.preferredLines.map((preferred) => {
-        if (preferred == null || preferred <= 0)
-            return null;
-        let line = preferred;
-        while (used.has(line))
-            line++;
-        used.add(line);
-        return line;
-    });
-}
-export function assignRemediationAnchorLines(args) {
-    const { rows, changedLines, preferredLines } = args;
-    if (!changedLines.length) {
-        return assignPreferredLinesWithoutDiff({ preferredLines });
-    }
-    const sortedChanged = [...new Set(changedLines)].sort((a, b) => a - b);
-    const used = new Set();
-    const order = rows
-        .map((row, index) => ({ index, preferred: preferredLines[index] ?? 0, id: row.id }))
-        .sort((a, b) => a.preferred - b.preferred || a.id.localeCompare(b.id));
-    const assigned = rows.map(() => null);
-    for (const { index, preferred } of order) {
-        let line = null;
-        if (preferred > 0 && sortedChanged.includes(preferred) && !used.has(preferred)) {
-            line = preferred;
-        }
-        if (line == null) {
-            line = sortedChanged.find((candidate) => !used.has(candidate)) ?? null;
-        }
-        if (line == null)
-            continue;
-        assigned[index] = line;
-        used.add(line);
-    }
-    return assigned;
-}
-function expandFindingRows(rule, targetOverride) {
-    const target = targetOverride ?? countRuleFindings(rule);
-    if (target <= 0)
-        return [];
-    const rows = rule.finding_locations ?? [];
-    if (rows.length >= target)
-        return rows.slice(0, target);
-    if (rows.length > 0) {
-        const out = [...rows];
-        while (out.length < target) {
-            const template = rows[out.length % rows.length];
-            out.push({
-                ...template,
-                id: `${template.id ?? 'finding'}-extra-${out.length}`,
-            });
-        }
-        return out;
-    }
-    return Array.from({ length: target }, (_, index) => ({
-        id: `${rule.name}-finding-${index}`,
-    }));
-}
-function resolveLegacyScannablePath(args) {
-    for (const attempt of tryLegacyPaths({
-        rule: args.rule,
-        workspacePath: args.workspacePath,
-        diagnostics: args.diagnostics,
-        prScannableFiles: args.prScannableFiles,
-    })) {
-        return {
-            scannablePath: attempt.scannablePath,
-            preferredLine: attempt.anchor.line,
-        };
-    }
-    return null;
-}
-function collectRemediationPending(args) {
-    const { rules, workspacePath, diagnostics, prScannableFiles } = args;
-    const pending = [];
+function buildRemediationCandidatesForBatch(args) {
+    const { rules, workspacePath, prScannableFiles } = args;
+    const candidates = [];
     for (const rule of rules) {
-        const slotCount = countRuleRemediationSlots(rule);
-        if (slotCount <= 0)
+        if (countRuleRemediationSlots(rule) <= 0)
             continue;
-        const legacyFallback = resolveLegacyScannablePath({
-            rule,
-            workspacePath,
-            diagnostics,
-            prScannableFiles,
-        });
-        for (const [index, row] of expandFindingRows(rule, slotCount).entries()) {
-            const loc = locationFromFindingRow(row);
-            let scannablePath = null;
-            let preferredLine = null;
-            if (loc?.file_path) {
-                const repoPath = reportPathToRepoPath({
-                    reportPath: loc.file_path,
-                    workspacePath,
-                });
-                scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-            }
-            if (!scannablePath && legacyFallback) {
-                scannablePath = legacyFallback.scannablePath;
-            }
+        const meta = ruleMeta(rule);
+        for (const row of rule.finding_locations ?? []) {
+            const loc = fixLocationFromFindingRow(row);
+            if (!loc?.file_path)
+                continue;
+            const repoPath = reportPathToRepoPath({
+                reportPath: loc.file_path,
+                workspacePath,
+            });
+            const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
             if (!scannablePath)
                 continue;
-            const diagnosticLines = linesFromDiagnostics({
-                diagnostics,
-                ruleName: rule.name,
-                repoPath: scannablePath,
-            });
-            const filesChangedLines = linesFromFilesChanged({
-                rule,
-                workspacePath,
-                scannablePath,
-            });
-            if (diagnosticLines[index] != null) {
-                preferredLine = diagnosticLines[index];
-            }
-            else if (diagnosticLines.length === 1) {
-                preferredLine = diagnosticLines[0];
-            }
-            else if (filesChangedLines[index] != null) {
-                preferredLine = filesChangedLines[index];
-            }
-            else if (filesChangedLines.length === 1) {
-                preferredLine = filesChangedLines[0];
-            }
-            else if (loc) {
-                preferredLine = anchorFromLocation(loc)?.line ?? null;
-            }
-            else if (legacyFallback) {
-                preferredLine = legacyFallback.preferredLine;
-            }
-            if (preferredLine == null) {
-                preferredLine = preferredLineFromFindingRow({
-                    row,
-                    rule,
-                    workspacePath,
-                    scannablePath,
-                    diagnostics,
-                });
-            }
-            pending.push({
-                rule,
-                findingId: row.id || `${rule.name}-finding-${index}`,
-                scannablePath,
-                preferredLine,
-            });
-        }
-    }
-    return pending;
-}
-function buildRemediationCandidatesForBatch(args) {
-    const pending = collectRemediationPending(args);
-    const byFile = new Map();
-    for (const item of pending) {
-        const bucket = byFile.get(item.scannablePath) ?? [];
-        bucket.push(item);
-        byFile.set(item.scannablePath, bucket);
-    }
-    const candidates = [];
-    for (const [scannablePath, items] of byFile) {
-        const changedLines = args.diffChangedLines?.get(scannablePath) ?? [];
-        const assigned = assignRemediationAnchorLines({
-            rows: items.map((item) => ({ id: item.findingId })),
-            changedLines,
-            preferredLines: items.map((item) => item.preferredLine),
-        });
-        for (let i = 0; i < items.length; i++) {
-            const item = items[i];
-            let line = assigned[i];
-            if (line == null && item.preferredLine != null && item.preferredLine > 0) {
-                line = item.preferredLine;
-            }
-            if (line == null)
+            const anchor = anchorFromLocation(loc);
+            if (!anchor)
                 continue;
-            const meta = ruleMeta(item.rule);
             candidates.push({
-                dedupeKey: remediationFindingDedupeKey(item.rule.name, item.findingId, scannablePath),
-                ruleName: item.rule.name,
+                dedupeKey: remediationFindingDedupeKey(rule.name, row.id || `${rule.name}-finding`, scannablePath),
+                ruleName: rule.name,
                 displayName: meta.displayName,
                 description: meta.description,
                 impact: meta.impact,
@@ -423,8 +230,9 @@ function buildRemediationCandidatesForBatch(args) {
                 risk: meta.risk,
                 riskStatement: meta.riskStatement,
                 filePath: scannablePath,
-                line,
-                startLine: line,
+                line: anchor.line,
+                startLine: anchor.startLine,
+                endLine: anchor.endLine,
             });
         }
     }
@@ -501,47 +309,13 @@ export function extractAuditCommentCandidates(args) {
         const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
         const batchRules = report.spec?.rules ?? [];
         if (anchorStrategy === 'remediation') {
-            const eligibleRules = batchRules.filter((rule) => countRuleRemediationSlots(rule) > 0 || pathsFromRule(rule).length > 0);
+            const eligibleRules = batchRules.filter((rule) => countRuleRemediationSlots(rule) > 0 &&
+                (rule.finding_locations ?? []).some((row) => fixLocationFromFindingRow(row) != null));
             const remediationCandidates = buildRemediationCandidatesForBatch({
                 rules: eligibleRules,
                 workspacePath,
-                diagnostics,
                 prScannableFiles,
-                diffChangedLines,
             });
-            if (remediationCandidates.length === 0 && eligibleRules.length > 0) {
-                for (const rule of eligibleRules) {
-                    const meta = ruleMeta(rule);
-                    const attempts = tryLegacyPaths({
-                        rule,
-                        workspacePath,
-                        diagnostics,
-                        prScannableFiles,
-                        diffChangedLines,
-                    });
-                    for (const [index, attempt] of attempts.entries()) {
-                        const dedupeKey = remediationFindingDedupeKey(rule.name, `${rule.name}-legacy-${index}`, attempt.scannablePath);
-                        if (seen.has(dedupeKey))
-                            continue;
-                        seen.add(dedupeKey);
-                        candidates.push({
-                            dedupeKey,
-                            ruleName: rule.name,
-                            displayName: meta.displayName,
-                            description: meta.description,
-                            impact: meta.impact,
-                            impactStatement: meta.impactStatement,
-                            risk: meta.risk,
-                            riskStatement: meta.riskStatement,
-                            filePath: attempt.scannablePath,
-                            line: attempt.anchor.line,
-                            startLine: attempt.anchor.startLine,
-                            endLine: attempt.anchor.endLine,
-                        });
-                    }
-                }
-                continue;
-            }
             for (const candidate of remediationCandidates) {
                 if (seen.has(candidate.dedupeKey))
                     continue;

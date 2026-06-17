@@ -541,7 +541,60 @@ describe('extract-audit-comments', () => {
     );
   });
 
-  it('expands findings without finding_locations rows across diff lines', () => {
+  it('anchors remediation comments at resolved_location from the ORL report', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 1,
+              fixes: 1,
+              changes: 1,
+              rules: [
+                {
+                  name: 'orl-rule:fix-line',
+                  metadata: { name: 'orl-rule:fix-line' },
+                  findings: 1,
+                  finding_locations: [
+                    {
+                      id: 'f1',
+                      original_location: {
+                        id: 'orig',
+                        file_path: 'main.tf',
+                        start_line: 5,
+                        start_column: 0,
+                      },
+                      resolved_location: {
+                        id: 'l1',
+                        file_path: 'main.tf',
+                        start_line: 55,
+                        start_column: 0,
+                      },
+                    },
+                  ],
+                  files_changed: { 'main.tf': { line: 8 } },
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].line, 55);
+  });
+
+  it('skips remediation rows without resolved_location', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
       batchReports: [
@@ -570,18 +623,13 @@ describe('extract-audit-comments', () => {
       ],
       batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
       prScannableFiles: new Set(['main.tf']),
-      diffChangedLines: new Map([['main.tf', [40, 55, 70]]]),
       anchorStrategy: 'remediation',
     });
 
-    assert.equal(candidates.length, 3);
-    assert.deepEqual(
-      candidates.map((c) => c.line).sort((a, b) => a - b),
-      [40, 55, 70]
-    );
+    assert.equal(candidates.length, 0);
   });
 
-  it('uses preferred lines when remediation diff map is empty', () => {
+  it('uses resolved_location lines from the ORL report for remediation', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
       batchReports: [
@@ -635,11 +683,11 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates.length, 2);
     assert.deepEqual(
       candidates.map((c) => c.line).sort((a, b) => a - b),
-      [10, 11]
+      [10, 10]
     );
   });
 
-  it('builds remediation comments from fixes when findings count is zero', () => {
+  it('builds remediation comments only from resolved_location rows', () => {
     const rule = {
       name: 'orl-rule:fixed',
       metadata: { name: 'orl-rule:fixed' },
@@ -647,6 +695,26 @@ describe('extract-audit-comments', () => {
       fixes: 2,
       changes: 2,
       files_changed: { 'main.tf': { line: 8 } },
+      finding_locations: [
+        {
+          id: 'f1',
+          resolved_location: {
+            id: 'l1',
+            file_path: 'main.tf',
+            start_line: 40,
+            start_column: 0,
+          },
+        },
+        {
+          id: 'f2',
+          resolved_location: {
+            id: 'l2',
+            file_path: 'main.tf',
+            start_line: 55,
+            start_column: 0,
+          },
+        },
+      ],
     };
 
     const raw = extractAuditCommentCandidates({
@@ -670,11 +738,14 @@ describe('extract-audit-comments', () => {
       ],
       batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
       prScannableFiles: new Set(['main.tf']),
-      diffChangedLines: new Map([['main.tf', [40, 55]]]),
       anchorStrategy: 'remediation',
     });
 
     assert.equal(raw.length, 2);
+    assert.deepEqual(
+      raw.map((c) => c.line).sort((a, b) => a - b),
+      [40, 55]
+    );
 
     const capped = capAuditCommentCandidates({
       candidates: raw,
@@ -686,55 +757,7 @@ describe('extract-audit-comments', () => {
     assert.equal(capped.length, 2);
   });
 
-  it('prefers files_changed fix lines over finding_locations for remediation anchors', () => {
-    const candidates = extractAuditCommentCandidates({
-      batches: [],
-      batchReports: [
-        {
-          batchId: 'batch-0',
-          workspacePath: '.',
-          report: {
-            metadata: { name: 'r' },
-            spec: {
-              rules_applied: 1,
-              findings: 1,
-              fixes: 1,
-              changes: 1,
-              rules: [
-                {
-                  name: 'orl-rule:fix-line',
-                  metadata: { name: 'orl-rule:fix-line' },
-                  findings: 1,
-                  finding_locations: [
-                    {
-                      id: 'f1',
-                      resolved_location: {
-                        id: 'l1',
-                        file_path: 'main.tf',
-                        start_line: 10,
-                        start_column: 0,
-                      },
-                    },
-                  ],
-                  files_changed: { 'main.tf': { line: 55 } },
-                },
-              ],
-              errors: [],
-            },
-          },
-        },
-      ],
-      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
-      prScannableFiles: new Set(['main.tf']),
-      diffChangedLines: new Map([['main.tf', [40, 55, 70]]]),
-      anchorStrategy: 'remediation',
-    });
-
-    assert.equal(candidates.length, 1);
-    assert.equal(candidates[0].line, 55);
-  });
-
-  it('distributes remediation anchors across PR diff lines instead of stacking', () => {
+  it('uses one remediation comment per finding_locations row with resolved_location', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
       batchReports: [
@@ -759,7 +782,7 @@ describe('extract-audit-comments', () => {
                       resolved_location: {
                         id: 'l1',
                         file_path: 'network-main.tf',
-                        start_line: 10,
+                        start_line: 40,
                         start_column: 0,
                       },
                     },
@@ -768,7 +791,7 @@ describe('extract-audit-comments', () => {
                       resolved_location: {
                         id: 'l2',
                         file_path: 'network-main.tf',
-                        start_line: 10,
+                        start_line: 55,
                         start_column: 0,
                       },
                     },
@@ -784,7 +807,7 @@ describe('extract-audit-comments', () => {
                       resolved_location: {
                         id: 'l3',
                         file_path: 'network-main.tf',
-                        start_line: 10,
+                        start_line: 70,
                         start_column: 0,
                       },
                     },
@@ -793,7 +816,7 @@ describe('extract-audit-comments', () => {
                       resolved_location: {
                         id: 'l4',
                         file_path: 'network-main.tf',
-                        start_line: 10,
+                        start_line: 88,
                         start_column: 0,
                       },
                     },
@@ -807,15 +830,13 @@ describe('extract-audit-comments', () => {
       ],
       batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
       prScannableFiles: new Set(['deploy/terraform/aws/network-main.tf']),
-      diffChangedLines: new Map([
-        ['deploy/terraform/aws/network-main.tf', [40, 55, 70, 88]],
-      ]),
       anchorStrategy: 'remediation',
     });
 
     assert.equal(candidates.length, 4);
-    const lines = candidates.map((c) => c.line).sort((a, b) => a - b);
-    assert.deepEqual(lines, [40, 55, 70, 88]);
-    assert.equal(new Set(lines).size, 4);
+    assert.deepEqual(
+      candidates.map((c) => c.line).sort((a, b) => a - b),
+      [40, 55, 70, 88]
+    );
   });
 });
