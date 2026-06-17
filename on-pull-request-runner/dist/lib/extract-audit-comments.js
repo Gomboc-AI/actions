@@ -46,6 +46,70 @@ function locationFromFindingRow(row) {
 function fixLocationFromFindingRow(row) {
     return row.resolved_location ?? null;
 }
+function summarizeReportLocation(loc) {
+    if (!loc)
+        return '(none)';
+    const end = typeof loc.end_line === 'number' && loc.end_line !== loc.start_line
+        ? `-${loc.end_line}`
+        : '';
+    return `${loc.file_path}:${loc.start_line}${end}`;
+}
+/** Logs why remediation inline comments were or were not extracted from batch reports. */
+export function logRemediationCommentDiagnostics(args) {
+    const tag = '[remediation-comments]';
+    const { batchId, workspacePath, report, prScannableFiles } = args;
+    const spec = report.spec;
+    console.log(`${tag} batch=${batchId} workspace=${JSON.stringify(workspacePath)}`);
+    const resolvedLocationCount = spec?.resolved_location_count;
+    if (resolvedLocationCount != null) {
+        console.log(`${tag} spec.resolved_location_count=${resolvedLocationCount}`);
+    }
+    console.log(`${tag} spec totals: findings=${spec?.findings ?? 0} fixes=${spec?.fixes ?? 0} changes=${spec?.changes ?? 0}`);
+    const scannableList = [...prScannableFiles].sort();
+    const preview = scannableList.slice(0, 20).join(', ');
+    console.log(`${tag} scannable files (${scannableList.length}): ${preview}${scannableList.length > 20 ? ', …' : ''}`);
+    let rulesWithFixes = 0;
+    let candidateRows = 0;
+    for (const rule of spec?.rules ?? []) {
+        const slots = countRuleRemediationSlots(rule);
+        if (slots <= 0)
+            continue;
+        rulesWithFixes++;
+        const rows = rule.finding_locations ?? [];
+        const withResolved = rows.filter((row) => row.resolved_location?.file_path).length;
+        console.log(`${tag} rule=${rule.name} fixes=${rule.fixes ?? 0} changes=${rule.changes ?? 0} remediation_slots=${slots} finding_locations=${rows.length} rows_with_resolved_location=${withResolved}`);
+        if (rows.length === 0) {
+            console.log(`${tag}   no finding_locations rows; files_changed=${Object.keys(rule.files_changed ?? {}).join(', ') || '(none)'}`);
+            continue;
+        }
+        for (const row of rows) {
+            const resolved = row.resolved_location;
+            const original = row.original_location;
+            console.log(`${tag}   row id=${row.id} resolution_status=${row.resolution_status ?? '(unset)'} original=${summarizeReportLocation(original)} resolved=${summarizeReportLocation(resolved)}`);
+            if (!resolved?.file_path) {
+                console.log(`${tag}     -> skip: resolved_location missing`);
+                continue;
+            }
+            const repoPath = reportPathToRepoPath({
+                reportPath: resolved.file_path,
+                workspacePath,
+            });
+            const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
+            if (!scannablePath) {
+                console.log(`${tag}     -> skip: not in scannable set (report ${JSON.stringify(resolved.file_path)} -> repo ${JSON.stringify(repoPath)})`);
+                continue;
+            }
+            const anchor = anchorFromLocation(resolved);
+            if (!anchor) {
+                console.log(`${tag}     -> skip: resolved_location start_line invalid (${resolved.start_line})`);
+                continue;
+            }
+            candidateRows++;
+            console.log(`${tag}     -> candidate ${scannablePath}:${anchor.line}`);
+        }
+    }
+    console.log(`${tag} batch summary: rules_with_fixes=${rulesWithFixes} candidate_rows=${candidateRows}`);
+}
 function lineFromReportEntry(entry) {
     if (entry == null)
         return null;
@@ -309,13 +373,19 @@ export function extractAuditCommentCandidates(args) {
         const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
         const batchRules = report.spec?.rules ?? [];
         if (anchorStrategy === 'remediation') {
-            const eligibleRules = batchRules.filter((rule) => countRuleRemediationSlots(rule) > 0 &&
-                (rule.finding_locations ?? []).some((row) => fixLocationFromFindingRow(row) != null));
+            logRemediationCommentDiagnostics({
+                batchId,
+                workspacePath,
+                report,
+                prScannableFiles,
+            });
+            const rulesWithFixes = batchRules.filter((rule) => countRuleRemediationSlots(rule) > 0);
             const remediationCandidates = buildRemediationCandidatesForBatch({
-                rules: eligibleRules,
+                rules: rulesWithFixes,
                 workspacePath,
                 prScannableFiles,
             });
+            console.log(`[remediation-comments] batch=${batchId} extracted ${remediationCandidates.length} candidate(s) from report`);
             for (const candidate of remediationCandidates) {
                 if (seen.has(candidate.dedupeKey))
                     continue;

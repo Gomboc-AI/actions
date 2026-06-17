@@ -190,15 +190,23 @@ async function pruneStaleAuditComments(args) {
     return removed;
 }
 async function postInlineComments(args) {
-    const { github, owner, repo, pullNumber, headSha, candidates, maxComments, portalServiceUrl, } = args;
+    const { github, owner, repo, pullNumber, headSha, candidates, maxComments, portalServiceUrl, verbose, } = args;
+    const logTag = verbose ? '[remediation-comments]' : null;
     let posted = 0;
     let skipped = 0;
     const postedCommentIds = new Set();
     const activeDedupeKeys = new Set();
     for (const candidate of candidates) {
         if (posted >= maxComments) {
-            skipped += candidates.length - posted - skipped;
+            const remaining = candidates.length - posted - skipped;
+            if (logTag && remaining > 0) {
+                console.log(`${logTag} stopped posting: maxComments=${maxComments} (${remaining} not attempted)`);
+            }
+            skipped += remaining;
             break;
+        }
+        if (logTag) {
+            console.log(`${logTag} posting PR #${pullNumber} ${candidate.filePath}:${candidate.line} rule=${candidate.ruleName} commit=${headSha.slice(0, 7)}`);
         }
         try {
             const created = await github.createPullReviewComment({
@@ -211,15 +219,27 @@ async function postInlineComments(args) {
                 startLine: candidate.startLine,
                 body: formatInlineCommentBody(candidate, { portalServiceUrl }),
             });
+            if (logTag) {
+                console.log(`${logTag} posted comment id=${created.id} at ${candidate.filePath}:${candidate.line}`);
+            }
             postedCommentIds.add(created.id);
             activeDedupeKeys.add(candidate.dedupeKey);
             posted++;
         }
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
-            console.warn(`Skipped inline comment ${candidate.filePath}:${candidate.line} (${candidate.ruleName}): ${message}`);
+            const warn = `Skipped inline comment ${candidate.filePath}:${candidate.line} (${candidate.ruleName}): ${message}`;
+            if (logTag) {
+                console.warn(`${logTag} ${warn}`);
+            }
+            else {
+                console.warn(warn);
+            }
             skipped++;
         }
+    }
+    if (logTag) {
+        console.log(`${logTag} post summary: attempted=${Math.min(candidates.length, maxComments)} posted=${posted} skipped=${skipped} pull=#${pullNumber}`);
     }
     return { posted, skipped, postedCommentIds, activeDedupeKeys };
 }
@@ -248,6 +268,7 @@ export async function publishAuditFeedback(args) {
     const diffBaseSha = baseSha;
     const commentHeadSha = headSha;
     if (isRemediation) {
+        console.log(`[remediation-comments] publish on PR #${pullNumber} base=${baseSha.slice(0, 7)} head=${commentHeadSha.slice(0, 7)} scannable_files=${scannableFiles.length} maxComments=${maxComments}`);
         const prMeta = await github.getPullRequest({ owner, repo, pullNumber });
         if (prMeta.head.sha !== headSha) {
             console.warn(`Remediation PR head ${prMeta.head.sha.slice(0, 7)} differs from checkout ${headSha.slice(0, 7)}; anchoring inline comments on checkout diff`);
@@ -301,8 +322,12 @@ export async function publishAuditFeedback(args) {
     const unanchored = Math.max(0, totalCommentSlots - candidates.length);
     const scanCompleted = batchReports.length > 0;
     if (isRemediation) {
+        console.log(`[remediation-comments] candidates raw=${candidatesRaw.length} after_cap=${candidates.length} comment_slots=${totalCommentSlots} unanchored=${unanchored}`);
+        if (candidatesRaw.length === 0) {
+            console.warn('[remediation-comments] no candidates — check batch logs above for missing resolved_location or scannable path mismatches');
+        }
         for (const candidate of candidates) {
-            console.log(`Remediation comment plan: ${candidate.filePath}:${candidate.line} (${candidate.ruleName})`);
+            console.log(`[remediation-comments] plan: ${candidate.filePath}:${candidate.line} (${candidate.ruleName})`);
         }
     }
     console.log(`Inline comment planning: findings=${totalFindings}, fixes=${totalFixes}, candidates=${candidates.length}, scannable=${scannableFiles.length}`);
@@ -315,6 +340,7 @@ export async function publishAuditFeedback(args) {
         candidates,
         maxComments,
         portalServiceUrl,
+        verbose: isRemediation,
     });
     const removed = await pruneStaleAuditComments({
         github,
