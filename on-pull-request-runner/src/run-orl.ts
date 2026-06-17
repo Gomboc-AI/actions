@@ -71,6 +71,7 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
     '--rulespace',
     '/workspace/rules',
     '--recursive-rulespace',
+    '--include-location-info',
     '--language',
     batch.orlLanguage,
     '--out',

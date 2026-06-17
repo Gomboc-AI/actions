@@ -42,6 +42,7 @@ async function runBatch(args) {
         '--rulespace',
         '/workspace/rules',
         '--recursive-rulespace',
+        '--include-location-info',
         '--language',
         batch.orlLanguage,
         '--out',
