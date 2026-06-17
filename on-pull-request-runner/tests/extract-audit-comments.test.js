@@ -594,7 +594,7 @@ describe('extract-audit-comments', () => {
     assert.equal(candidates[0].line, 55);
   });
 
-  it('skips remediation rows without resolved_location or files_changed', () => {
+  it('skips remediation rows without resolved_location', () => {
     const candidates = extractAuditCommentCandidates({
       batches: [],
       batchReports: [
@@ -627,106 +627,6 @@ describe('extract-audit-comments', () => {
     });
 
     assert.equal(candidates.length, 0);
-  });
-
-  it('falls back to files_changed when finding_locations are absent', () => {
-    const candidates = extractAuditCommentCandidates({
-      batches: [],
-      batchReports: [
-        {
-          batchId: 'batch-0',
-          workspacePath: 'deploy/terraform/aws',
-          report: {
-            metadata: { name: 'r' },
-            spec: {
-              rules_applied: 1,
-              findings: 0,
-              fixes: 2,
-              changes: 2,
-              rules: [
-                {
-                  name: 'sentinel-ec2-no-public-route-to-igw000',
-                  metadata: { name: 'sentinel-ec2-no-public-route-to-igw000' },
-                  findings: 0,
-                  fixes: 2,
-                  changes: 2,
-                  files_changed: {
-                    'network-main.tf': {},
-                    'rds-main.tf': { line: 12 },
-                  },
-                },
-              ],
-              errors: [],
-            },
-          },
-        },
-      ],
-      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
-      prScannableFiles: new Set([
-        'deploy/terraform/aws/network-main.tf',
-        'deploy/terraform/aws/rds-main.tf',
-      ]),
-      diffChangedLines: new Map([
-        ['deploy/terraform/aws/network-main.tf', [40, 55]],
-        ['deploy/terraform/aws/rds-main.tf', [8, 9]],
-      ]),
-      anchorStrategy: 'remediation',
-    });
-
-    assert.equal(candidates.length, 2);
-    const byFile = Object.fromEntries(candidates.map((c) => [c.filePath, c.line]));
-    assert.equal(byFile['deploy/terraform/aws/network-main.tf'], 40);
-    assert.equal(byFile['deploy/terraform/aws/rds-main.tf'], 12);
-  });
-
-  it('assigns distinct diff lines when multiple rules share a files_changed path', () => {
-    const ruleA = {
-      name: 'orl-rule:a',
-      metadata: { name: 'orl-rule:a' },
-      findings: 0,
-      fixes: 1,
-      changes: 1,
-      files_changed: { 'main.tf': {} },
-    };
-    const ruleB = {
-      name: 'orl-rule:b',
-      metadata: { name: 'orl-rule:b' },
-      findings: 0,
-      fixes: 1,
-      changes: 1,
-      files_changed: { 'main.tf': {} },
-    };
-
-    const candidates = extractAuditCommentCandidates({
-      batches: [],
-      batchReports: [
-        {
-          batchId: 'batch-0',
-          workspacePath: '.',
-          report: {
-            metadata: { name: 'r' },
-            spec: {
-              rules_applied: 2,
-              findings: 0,
-              fixes: 2,
-              changes: 2,
-              rules: [ruleA, ruleB],
-              errors: [],
-            },
-          },
-        },
-      ],
-      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
-      prScannableFiles: new Set(['main.tf']),
-      diffChangedLines: new Map([['main.tf', [40, 55, 70]]]),
-      anchorStrategy: 'remediation',
-    });
-
-    assert.equal(candidates.length, 2);
-    assert.deepEqual(
-      candidates.map((c) => c.line).sort((a, b) => a - b),
-      [40, 55]
-    );
   });
 
   it('uses resolved_location lines from the ORL report for remediation', () => {

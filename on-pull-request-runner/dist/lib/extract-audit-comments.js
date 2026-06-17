@@ -46,93 +46,6 @@ function locationFromFindingRow(row) {
 function fixLocationFromFindingRow(row) {
     return row.resolved_location ?? null;
 }
-function summarizeReportLocation(loc) {
-    if (!loc)
-        return '(none)';
-    const end = typeof loc.end_line === 'number' && loc.end_line !== loc.start_line
-        ? `-${loc.end_line}`
-        : '';
-    return `${loc.file_path}:${loc.start_line}${end}`;
-}
-/** Logs why remediation inline comments were or were not extracted from batch reports. */
-export function logRemediationCommentDiagnostics(args) {
-    const tag = '[remediation-comments]';
-    const { batchId, workspacePath, report, prScannableFiles, diffChangedLines } = args;
-    const spec = report.spec;
-    console.log(`${tag} batch=${batchId} workspace=${JSON.stringify(workspacePath)}`);
-    const resolvedLocationCount = spec?.resolved_location_count;
-    if (resolvedLocationCount != null) {
-        console.log(`${tag} spec.resolved_location_count=${resolvedLocationCount}`);
-    }
-    console.log(`${tag} spec totals: findings=${spec?.findings ?? 0} fixes=${spec?.fixes ?? 0} changes=${spec?.changes ?? 0}`);
-    const scannableList = [...prScannableFiles].sort();
-    const preview = scannableList.slice(0, 20).join(', ');
-    console.log(`${tag} scannable files (${scannableList.length}): ${preview}${scannableList.length > 20 ? ', …' : ''}`);
-    let rulesWithFixes = 0;
-    let candidateRows = 0;
-    for (const rule of spec?.rules ?? []) {
-        const slots = countRuleRemediationSlots(rule);
-        if (slots <= 0)
-            continue;
-        rulesWithFixes++;
-        const rows = rule.finding_locations ?? [];
-        const withResolved = rows.filter((row) => row.resolved_location?.file_path).length;
-        console.log(`${tag} rule=${rule.name} fixes=${rule.fixes ?? 0} changes=${rule.changes ?? 0} remediation_slots=${slots} finding_locations=${rows.length} rows_with_resolved_location=${withResolved}`);
-        if (rows.length === 0 || withResolved === 0) {
-            const changed = Object.entries(rule.files_changed ?? {});
-            console.log(`${tag}   finding_locations unusable; files_changed=${changed.map(([p]) => p).join(', ') || '(none)'}`);
-            for (const [path, entry] of changed) {
-                const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
-                const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-                const reportLine = lineFromReportEntry(entry)?.line;
-                const diffLine = scannablePath
-                    ? firstDiffLine(diffChangedLines, scannablePath)
-                    : null;
-                if (!scannablePath) {
-                    console.log(`${tag}     files_changed ${path} -> NOT SCANNABLE (repo ${JSON.stringify(repoPath)})`);
-                    continue;
-                }
-                const line = reportLine ?? diffLine;
-                if (line == null) {
-                    console.log(`${tag}     files_changed ${path} -> ${scannablePath}: no line in report or remediation diff`);
-                    continue;
-                }
-                candidateRows++;
-                const source = reportLine != null ? 'files_changed' : 'remediation_diff';
-                console.log(`${tag}     -> candidate ${scannablePath}:${line} (from ${source})`);
-            }
-        }
-        if (rows.length === 0 || withResolved === 0) {
-            continue;
-        }
-        for (const row of rows) {
-            const resolved = row.resolved_location;
-            const original = row.original_location;
-            console.log(`${tag}   row id=${row.id} resolution_status=${row.resolution_status ?? '(unset)'} original=${summarizeReportLocation(original)} resolved=${summarizeReportLocation(resolved)}`);
-            if (!resolved?.file_path) {
-                console.log(`${tag}     -> skip: resolved_location missing`);
-                continue;
-            }
-            const repoPath = reportPathToRepoPath({
-                reportPath: resolved.file_path,
-                workspacePath,
-            });
-            const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-            if (!scannablePath) {
-                console.log(`${tag}     -> skip: not in scannable set (report ${JSON.stringify(resolved.file_path)} -> repo ${JSON.stringify(repoPath)})`);
-                continue;
-            }
-            const anchor = anchorFromLocation(resolved);
-            if (!anchor) {
-                console.log(`${tag}     -> skip: resolved_location start_line invalid (${resolved.start_line})`);
-                continue;
-            }
-            candidateRows++;
-            console.log(`${tag}     -> candidate ${scannablePath}:${anchor.line}`);
-        }
-    }
-    console.log(`${tag} batch summary: rules_with_fixes=${rulesWithFixes} candidate_rows=${candidateRows}`);
-}
 function lineFromReportEntry(entry) {
     if (entry == null)
         return null;
@@ -214,44 +127,6 @@ function lineFromDiagnostics(args) {
     }
     return null;
 }
-/** All diagnostic hunk/resource start lines for a rule and file (fix locations). */
-export function linesFromDiagnostics(args) {
-    const { diagnostics, ruleName, repoPath } = args;
-    if (!diagnostics?.rules?.length)
-        return [];
-    const normalizedTarget = normalizeReportFilePath(repoPath);
-    const hunkLines = [];
-    const resourceLines = [];
-    for (const dr of diagnostics.rules) {
-        if (dr.ruleName && dr.ruleName !== ruleName)
-            continue;
-        for (const file of dr.files ?? []) {
-            if (!file.path)
-                continue;
-            if (normalizeReportFilePath(file.path) !== normalizedTarget)
-                continue;
-            for (const h of file.hunks ?? []) {
-                if (typeof h.startLine === 'number' && h.startLine > 0) {
-                    hunkLines.push(h.startLine);
-                }
-            }
-            for (const r of file.resources ?? []) {
-                if (typeof r.startLine === 'number' && r.startLine > 0) {
-                    resourceLines.push(r.startLine);
-                }
-            }
-        }
-    }
-    const seen = new Set();
-    const ordered = [];
-    for (const line of [...hunkLines, ...resourceLines]) {
-        if (seen.has(line))
-            continue;
-        seen.add(line);
-        ordered.push(line);
-    }
-    return ordered;
-}
 function pathsFromRule(rule) {
     const out = new Map();
     for (const [path, entry] of Object.entries(rule.paths_with_findings ?? {})) {
@@ -285,29 +160,6 @@ export function canonicalAnchorDedupeKey(ruleName, scannablePath, line) {
 /** One inline comment per finding on remediation PRs. */
 export function remediationFindingDedupeKey(ruleName, findingId, scannablePath) {
     return `${ruleName}:${findingId}:${scannablePath}`;
-}
-function remediationLineFromFilesChangedEntry(args) {
-    const fromEntry = lineFromReportEntry(args.entry);
-    if (fromEntry)
-        return fromEntry;
-    for (const line of linesFromDiagnostics({
-        diagnostics: args.diagnostics,
-        ruleName: args.ruleName,
-        repoPath: args.scannablePath,
-    })) {
-        if (!args.usedLinesOnFile.has(line)) {
-            return { line, startLine: line };
-        }
-    }
-    const diffLines = args.diffChangedLines?.get(args.scannablePath) ?? [];
-    const unusedDiff = diffLines.find((line) => !args.usedLinesOnFile.has(line));
-    if (unusedDiff != null) {
-        return { line: unusedDiff, startLine: unusedDiff };
-    }
-    if (diffLines.length > 0) {
-        return { line: diffLines[diffLines.length - 1], startLine: diffLines[diffLines.length - 1] };
-    }
-    return null;
 }
 function buildRemediationCandidatesFromResolvedLocations(args) {
     const { rule, workspacePath, prScannableFiles } = args;
@@ -344,73 +196,18 @@ function buildRemediationCandidatesFromResolvedLocations(args) {
     }
     return candidates;
 }
-function buildRemediationCandidatesFromFilesChanged(args) {
-    const { rule, workspacePath, prScannableFiles, diagnostics, diffChangedLines, slotLimit, sharedUsedLinesByFile, } = args;
-    const meta = ruleMeta(rule);
-    const candidates = [];
-    for (const [path, entry] of Object.entries(rule.files_changed ?? {})) {
-        if (candidates.length >= slotLimit)
-            break;
-        const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
-        const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-        if (!scannablePath)
-            continue;
-        const usedOnFile = sharedUsedLinesByFile.get(scannablePath) ?? new Set();
-        const anchor = remediationLineFromFilesChangedEntry({
-            entry,
-            ruleName: rule.name,
-            scannablePath,
-            diagnostics,
-            diffChangedLines,
-            usedLinesOnFile: usedOnFile,
-        });
-        if (!anchor)
-            continue;
-        usedOnFile.add(anchor.line);
-        sharedUsedLinesByFile.set(scannablePath, usedOnFile);
-        candidates.push({
-            dedupeKey: remediationFindingDedupeKey(rule.name, `${path}:${anchor.line}`, scannablePath),
-            ruleName: rule.name,
-            displayName: meta.displayName,
-            description: meta.description,
-            impact: meta.impact,
-            impactStatement: meta.impactStatement,
-            risk: meta.risk,
-            riskStatement: meta.riskStatement,
-            filePath: scannablePath,
-            line: anchor.line,
-            startLine: anchor.startLine,
-            endLine: anchor.endLine,
-        });
-    }
-    return candidates;
-}
 function buildRemediationCandidatesForBatch(args) {
-    const { rules, workspacePath, prScannableFiles, diagnostics, diffChangedLines } = args;
+    const { rules, workspacePath, prScannableFiles } = args;
     const candidates = [];
-    const sharedUsedLinesByFile = new Map();
     for (const rule of rules) {
         const slotLimit = countRuleRemediationSlots(rule);
         if (slotLimit <= 0)
             continue;
-        const fromResolved = buildRemediationCandidatesFromResolvedLocations({
+        candidates.push(...buildRemediationCandidatesFromResolvedLocations({
             rule,
             workspacePath,
             prScannableFiles,
-        });
-        if (fromResolved.length > 0) {
-            candidates.push(...fromResolved.slice(0, slotLimit));
-            continue;
-        }
-        candidates.push(...buildRemediationCandidatesFromFilesChanged({
-            rule,
-            workspacePath,
-            prScannableFiles,
-            diagnostics,
-            diffChangedLines,
-            slotLimit,
-            sharedUsedLinesByFile,
-        }));
+        }).slice(0, slotLimit));
     }
     return candidates;
 }
@@ -485,22 +282,12 @@ export function extractAuditCommentCandidates(args) {
         const diagnostics = diagnosticsForBatch(batchDiagnostics, batchId);
         const batchRules = report.spec?.rules ?? [];
         if (anchorStrategy === 'remediation') {
-            logRemediationCommentDiagnostics({
-                batchId,
-                workspacePath,
-                report,
-                prScannableFiles,
-                diffChangedLines,
-            });
             const rulesWithFixes = batchRules.filter((rule) => countRuleRemediationSlots(rule) > 0);
             const remediationCandidates = buildRemediationCandidatesForBatch({
                 rules: rulesWithFixes,
                 workspacePath,
                 prScannableFiles,
-                diagnostics,
-                diffChangedLines,
             });
-            console.log(`[remediation-comments] batch=${batchId} extracted ${remediationCandidates.length} candidate(s) from report`);
             for (const candidate of remediationCandidates) {
                 if (seen.has(candidate.dedupeKey))
                     continue;

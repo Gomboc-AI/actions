@@ -171,7 +171,6 @@ async function main() {
         baseSha,
         headSha,
     });
-    console.log(`[remediation-comments] before publish: base=${baseSha.slice(0, 7)} head=${headSha.slice(0, 7)} scannable=${scannableFiles.length} replay_commits=${replay.commitCount}`);
     const { owner, repo } = parseOwnerRepo(pr.repository);
     const github = GitHubClient.fromEnv();
     const existing = await findOpenRemediationPr({
@@ -232,7 +231,6 @@ async function main() {
         sourcePullNumber: pr.number,
         sourceHeadRef: pr.headRef,
     });
-    console.log(`[remediation-comments] finished feedback for PR #${remediationPullNumber}; search workflow log for "[remediation-comments]" to diagnose inline comments`);
     const remediationIdentity = await github.getPullRequestIdentity({
         owner,
         repo,

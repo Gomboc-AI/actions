@@ -14,7 +14,7 @@ import {
   type AuditCommentCandidate,
   type DiagnosticsShape,
 } from './extract-audit-comments.js';
-import { gitDiffChangedLines, parsePatchCommentableLines } from './git-diff-lines.js';
+import { gitDiffChangedLines } from './git-diff-lines.js';
 import type { GitHubClient } from './clients/github-client.js';
 import {
   formatScoreMarkdown,
@@ -120,45 +120,6 @@ function buildDiffChangedLinesMap(args: {
     });
     if (lines.length) map.set(file, lines);
   }
-  return map;
-}
-
-async function buildCommentableLinesMap(args: {
-  github: GitHubClient;
-  owner: string;
-  repo: string;
-  pullNumber: number;
-  scannable: string[];
-  baseSha: string;
-  headSha: string;
-  cwd: string;
-  mergePullPatches: boolean;
-}): Promise<Map<string, number[]>> {
-  const map = buildDiffChangedLinesMap({
-    scannable: args.scannable,
-    baseSha: args.baseSha,
-    headSha: args.headSha,
-    cwd: args.cwd,
-  });
-
-  if (!args.mergePullPatches) return map;
-
-  const pullFiles = await args.github.listPullRequestFiles({
-    owner: args.owner,
-    repo: args.repo,
-    pullNumber: args.pullNumber,
-  });
-
-  for (const file of pullFiles) {
-    if (!file.patch) continue;
-    const fromPatch = parsePatchCommentableLines(file.patch);
-    if (!fromPatch.length) continue;
-
-    const existing = map.get(file.filename) ?? [];
-    const merged = [...new Set([...existing, ...fromPatch])].sort((a, b) => a - b);
-    map.set(file.filename, merged);
-  }
-
   return map;
 }
 
@@ -348,7 +309,6 @@ async function postInlineComments(args: {
   candidates: AuditCommentCandidate[];
   maxComments: number;
   portalServiceUrl: string;
-  verbose?: boolean;
 }): Promise<{
   posted: number;
   skipped: number;
@@ -364,9 +324,7 @@ async function postInlineComments(args: {
     candidates,
     maxComments,
     portalServiceUrl,
-    verbose,
   } = args;
-  const logTag = verbose ? '[remediation-comments]' : null;
   let posted = 0;
   let skipped = 0;
   const postedCommentIds = new Set<number>();
@@ -374,18 +332,8 @@ async function postInlineComments(args: {
 
   for (const candidate of candidates) {
     if (posted >= maxComments) {
-      const remaining = candidates.length - posted - skipped;
-      if (logTag && remaining > 0) {
-        console.log(`${logTag} stopped posting: maxComments=${maxComments} (${remaining} not attempted)`);
-      }
-      skipped += remaining;
+      skipped += candidates.length - posted - skipped;
       break;
-    }
-
-    if (logTag) {
-      console.log(
-        `${logTag} posting PR #${pullNumber} ${candidate.filePath}:${candidate.line} rule=${candidate.ruleName} commit=${headSha.slice(0, 7)}`
-      );
     }
 
     try {
@@ -399,30 +347,16 @@ async function postInlineComments(args: {
         startLine: candidate.startLine,
         body: formatInlineCommentBody(candidate, { portalServiceUrl }),
       });
-      if (logTag) {
-        console.log(
-          `${logTag} posted comment id=${created.id} at ${candidate.filePath}:${candidate.line}`
-        );
-      }
       postedCommentIds.add(created.id);
       activeDedupeKeys.add(candidate.dedupeKey);
       posted++;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      const warn = `Skipped inline comment ${candidate.filePath}:${candidate.line} (${candidate.ruleName}): ${message}`;
-      if (logTag) {
-        console.warn(`${logTag} ${warn}`);
-      } else {
-        console.warn(warn);
-      }
+      console.warn(
+        `Skipped inline comment ${candidate.filePath}:${candidate.line} (${candidate.ruleName}): ${message}`
+      );
       skipped++;
     }
-  }
-
-  if (logTag) {
-    console.log(
-      `${logTag} post summary: attempted=${Math.min(candidates.length, maxComments)} posted=${posted} skipped=${skipped} pull=#${pullNumber}`
-    );
   }
 
   return { posted, skipped, postedCommentIds, activeDedupeKeys };
@@ -503,39 +437,15 @@ export async function publishAuditFeedback(
 
   const isRemediation = summaryTarget === 'pull_body';
 
-  // Remediation diff anchors must match the branch we just built locally (feature tip → bot
-  // branch). GitHub PR metadata can lag behind push or diverge on stale PRs.
-  const diffBaseSha = baseSha;
-  const commentHeadSha = headSha;
-  if (isRemediation) {
-    console.log(
-      `[remediation-comments] publish on PR #${pullNumber} base=${baseSha.slice(0, 7)} head=${commentHeadSha.slice(0, 7)} scannable_files=${scannableFiles.length} maxComments=${maxComments}`
-    );
-    const prMeta = await github.getPullRequest({ owner, repo, pullNumber });
-    if (prMeta.head.sha !== headSha) {
-      console.warn(
-        `Remediation PR head ${prMeta.head.sha.slice(0, 7)} differs from checkout ${headSha.slice(0, 7)}; anchoring inline comments on checkout diff`
-      );
-    }
-    if (prMeta.base.sha !== baseSha) {
-      console.warn(
-        `Remediation PR base ${prMeta.base.sha.slice(0, 7)} differs from captured base ${baseSha.slice(0, 7)}; anchoring inline comments on captured base diff`
-      );
-    }
-  }
-
   const prScannableFiles = new Set(scannableFiles);
-  const diffChangedLines = await buildCommentableLinesMap({
-    github,
-    owner,
-    repo,
-    pullNumber,
-    scannable: scannableFiles,
-    baseSha: diffBaseSha,
-    headSha: commentHeadSha,
-    cwd: workspaceRoot,
-    mergePullPatches: isRemediation,
-  });
+  const diffChangedLines = isRemediation
+    ? undefined
+    : buildDiffChangedLinesMap({
+        scannable: scannableFiles,
+        baseSha,
+        headSha,
+        cwd: workspaceRoot,
+      });
 
   const batchReports = loadBatchReportsWithWorkspace();
   const batchDiagnostics = loadBatchDiagnostics();
@@ -577,22 +487,6 @@ export async function publishAuditFeedback(
   const unanchored = Math.max(0, totalCommentSlots - candidates.length);
   const scanCompleted = batchReports.length > 0;
 
-  if (isRemediation) {
-    console.log(
-      `[remediation-comments] candidates raw=${candidatesRaw.length} after_cap=${candidates.length} comment_slots=${totalCommentSlots} unanchored=${unanchored}`
-    );
-    if (candidatesRaw.length === 0) {
-      console.warn(
-        '[remediation-comments] no candidates — check batch logs above (resolved_location, files_changed paths, or remediation diff lines)'
-      );
-    }
-    for (const candidate of candidates) {
-      console.log(
-        `[remediation-comments] plan: ${candidate.filePath}:${candidate.line} (${candidate.ruleName})`
-      );
-    }
-  }
-
   console.log(
     `Inline comment planning: findings=${totalFindings}, fixes=${totalFixes}, candidates=${candidates.length}, scannable=${scannableFiles.length}`
   );
@@ -603,11 +497,10 @@ export async function publishAuditFeedback(
       owner,
       repo,
       pullNumber,
-      headSha: commentHeadSha,
+      headSha,
       candidates,
       maxComments,
       portalServiceUrl,
-      verbose: isRemediation,
     });
 
   const removed = await pruneStaleAuditComments({

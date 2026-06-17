@@ -75,8 +75,8 @@ export type ExtractAuditCommentsArgs = {
   diffChangedLines?: Map<string, number[]>;
   /**
    * `audit`: anchor at ORL finding locations (`original_location`) on the source PR.
-   * `remediation`: prefer `finding_locations[].resolved_location`; if absent, use
-   * `files_changed` paths from the ORL report (line from report entry, else remediation diff).
+   * `remediation`: anchor at `finding_locations[].resolved_location` (requires ORL
+   * `--include-location-info`).
    */
   anchorStrategy?: 'audit' | 'remediation';
 };
@@ -121,135 +121,6 @@ function locationFromFindingRow(row: OrlFindingLocationRow): OrlLocation | null 
 /** Post-remediation fix location from the ORL report (remediation PR comments only). */
 function fixLocationFromFindingRow(row: OrlFindingLocationRow): OrlLocation | null {
   return row.resolved_location ?? null;
-}
-
-function summarizeReportLocation(loc: OrlLocation | undefined): string {
-  if (!loc) return '(none)';
-  const end =
-    typeof loc.end_line === 'number' && loc.end_line !== loc.start_line
-      ? `-${loc.end_line}`
-      : '';
-  return `${loc.file_path}:${loc.start_line}${end}`;
-}
-
-/** Logs why remediation inline comments were or were not extracted from batch reports. */
-export function logRemediationCommentDiagnostics(args: {
-  batchId: string;
-  workspacePath: string;
-  report: OrlReport;
-  prScannableFiles: Set<string>;
-  diffChangedLines?: Map<string, number[]>;
-}): void {
-  const tag = '[remediation-comments]';
-  const { batchId, workspacePath, report, prScannableFiles, diffChangedLines } = args;
-  const spec = report.spec;
-
-  console.log(`${tag} batch=${batchId} workspace=${JSON.stringify(workspacePath)}`);
-  const resolvedLocationCount = (
-    spec as { resolved_location_count?: number } | undefined
-  )?.resolved_location_count;
-  if (resolvedLocationCount != null) {
-    console.log(`${tag} spec.resolved_location_count=${resolvedLocationCount}`);
-  }
-  console.log(
-    `${tag} spec totals: findings=${spec?.findings ?? 0} fixes=${spec?.fixes ?? 0} changes=${spec?.changes ?? 0}`
-  );
-
-  const scannableList = [...prScannableFiles].sort();
-  const preview = scannableList.slice(0, 20).join(', ');
-  console.log(
-    `${tag} scannable files (${scannableList.length}): ${preview}${scannableList.length > 20 ? ', …' : ''}`
-  );
-
-  let rulesWithFixes = 0;
-  let candidateRows = 0;
-
-  for (const rule of spec?.rules ?? []) {
-    const slots = countRuleRemediationSlots(rule);
-    if (slots <= 0) continue;
-    rulesWithFixes++;
-
-    const rows = rule.finding_locations ?? [];
-    const withResolved = rows.filter((row) => row.resolved_location?.file_path).length;
-    console.log(
-      `${tag} rule=${rule.name} fixes=${rule.fixes ?? 0} changes=${rule.changes ?? 0} remediation_slots=${slots} finding_locations=${rows.length} rows_with_resolved_location=${withResolved}`
-    );
-
-    if (rows.length === 0 || withResolved === 0) {
-      const changed = Object.entries(rule.files_changed ?? {});
-      console.log(
-        `${tag}   finding_locations unusable; files_changed=${changed.map(([p]) => p).join(', ') || '(none)'}`
-      );
-      for (const [path, entry] of changed) {
-        const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
-        const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-        const reportLine = lineFromReportEntry(entry)?.line;
-        const diffLine = scannablePath
-          ? firstDiffLine(diffChangedLines, scannablePath)
-          : null;
-        if (!scannablePath) {
-          console.log(
-            `${tag}     files_changed ${path} -> NOT SCANNABLE (repo ${JSON.stringify(repoPath)})`
-          );
-          continue;
-        }
-        const line = reportLine ?? diffLine;
-        if (line == null) {
-          console.log(
-            `${tag}     files_changed ${path} -> ${scannablePath}: no line in report or remediation diff`
-          );
-          continue;
-        }
-        candidateRows++;
-        const source = reportLine != null ? 'files_changed' : 'remediation_diff';
-        console.log(`${tag}     -> candidate ${scannablePath}:${line} (from ${source})`);
-      }
-    }
-
-    if (rows.length === 0 || withResolved === 0) {
-      continue;
-    }
-
-    for (const row of rows) {
-      const resolved = row.resolved_location;
-      const original = row.original_location;
-      console.log(
-        `${tag}   row id=${row.id} resolution_status=${row.resolution_status ?? '(unset)'} original=${summarizeReportLocation(original)} resolved=${summarizeReportLocation(resolved)}`
-      );
-
-      if (!resolved?.file_path) {
-        console.log(`${tag}     -> skip: resolved_location missing`);
-        continue;
-      }
-
-      const repoPath = reportPathToRepoPath({
-        reportPath: resolved.file_path,
-        workspacePath,
-      });
-      const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-      if (!scannablePath) {
-        console.log(
-          `${tag}     -> skip: not in scannable set (report ${JSON.stringify(resolved.file_path)} -> repo ${JSON.stringify(repoPath)})`
-        );
-        continue;
-      }
-
-      const anchor = anchorFromLocation(resolved);
-      if (!anchor) {
-        console.log(
-          `${tag}     -> skip: resolved_location start_line invalid (${resolved.start_line})`
-        );
-        continue;
-      }
-
-      candidateRows++;
-      console.log(`${tag}     -> candidate ${scannablePath}:${anchor.line}`);
-    }
-  }
-
-  console.log(
-    `${tag} batch summary: rules_with_fixes=${rulesWithFixes} candidate_rows=${candidateRows}`
-  );
 }
 
 function lineFromReportEntry(entry: unknown): {
@@ -344,48 +215,6 @@ function lineFromDiagnostics(args: {
   return null;
 }
 
-/** All diagnostic hunk/resource start lines for a rule and file (fix locations). */
-export function linesFromDiagnostics(args: {
-  diagnostics: DiagnosticsShape | null;
-  ruleName: string;
-  repoPath: string;
-}): number[] {
-  const { diagnostics, ruleName, repoPath } = args;
-  if (!diagnostics?.rules?.length) return [];
-
-  const normalizedTarget = normalizeReportFilePath(repoPath);
-  const hunkLines: number[] = [];
-  const resourceLines: number[] = [];
-
-  for (const dr of diagnostics.rules) {
-    if (dr.ruleName && dr.ruleName !== ruleName) continue;
-    for (const file of dr.files ?? []) {
-      if (!file.path) continue;
-      if (normalizeReportFilePath(file.path) !== normalizedTarget) continue;
-
-      for (const h of file.hunks ?? []) {
-        if (typeof h.startLine === 'number' && h.startLine > 0) {
-          hunkLines.push(h.startLine);
-        }
-      }
-      for (const r of file.resources ?? []) {
-        if (typeof r.startLine === 'number' && r.startLine > 0) {
-          resourceLines.push(r.startLine);
-        }
-      }
-    }
-  }
-
-  const seen = new Set<number>();
-  const ordered: number[] = [];
-  for (const line of [...hunkLines, ...resourceLines]) {
-    if (seen.has(line)) continue;
-    seen.add(line);
-    ordered.push(line);
-  }
-  return ordered;
-}
-
 function pathsFromRule(rule: OrlReportRule): Array<{ path: string; entry: unknown }> {
   const out = new Map<string, unknown>();
 
@@ -444,38 +273,6 @@ export function remediationFindingDedupeKey(
   return `${ruleName}:${findingId}:${scannablePath}`;
 }
 
-function remediationLineFromFilesChangedEntry(args: {
-  entry: unknown;
-  ruleName: string;
-  scannablePath: string;
-  diagnostics: DiagnosticsShape | null;
-  diffChangedLines?: Map<string, number[]>;
-  usedLinesOnFile: Set<number>;
-}): { line: number; startLine?: number; endLine?: number } | null {
-  const fromEntry = lineFromReportEntry(args.entry);
-  if (fromEntry) return fromEntry;
-
-  for (const line of linesFromDiagnostics({
-    diagnostics: args.diagnostics,
-    ruleName: args.ruleName,
-    repoPath: args.scannablePath,
-  })) {
-    if (!args.usedLinesOnFile.has(line)) {
-      return { line, startLine: line };
-    }
-  }
-
-  const diffLines = args.diffChangedLines?.get(args.scannablePath) ?? [];
-  const unusedDiff = diffLines.find((line) => !args.usedLinesOnFile.has(line));
-  if (unusedDiff != null) {
-    return { line: unusedDiff, startLine: unusedDiff };
-  }
-  if (diffLines.length > 0) {
-    return { line: diffLines[diffLines.length - 1]!, startLine: diffLines[diffLines.length - 1]! };
-  }
-  return null;
-}
-
 function buildRemediationCandidatesFromResolvedLocations(args: {
   rule: OrlReportRule;
   workspacePath: string;
@@ -522,102 +319,24 @@ function buildRemediationCandidatesFromResolvedLocations(args: {
   return candidates;
 }
 
-function buildRemediationCandidatesFromFilesChanged(args: {
-  rule: OrlReportRule;
-  workspacePath: string;
-  prScannableFiles: Set<string>;
-  diagnostics: DiagnosticsShape | null;
-  diffChangedLines?: Map<string, number[]>;
-  slotLimit: number;
-  sharedUsedLinesByFile: Map<string, Set<number>>;
-}): AuditCommentCandidate[] {
-  const {
-    rule,
-    workspacePath,
-    prScannableFiles,
-    diagnostics,
-    diffChangedLines,
-    slotLimit,
-    sharedUsedLinesByFile,
-  } = args;
-  const meta = ruleMeta(rule);
-  const candidates: AuditCommentCandidate[] = [];
-
-  for (const [path, entry] of Object.entries(rule.files_changed ?? {})) {
-    if (candidates.length >= slotLimit) break;
-
-    const repoPath = reportPathToRepoPath({ reportPath: path, workspacePath });
-    const scannablePath = resolveScannablePath(repoPath, prScannableFiles);
-    if (!scannablePath) continue;
-
-    const usedOnFile = sharedUsedLinesByFile.get(scannablePath) ?? new Set<number>();
-    const anchor = remediationLineFromFilesChangedEntry({
-      entry,
-      ruleName: rule.name,
-      scannablePath,
-      diagnostics,
-      diffChangedLines,
-      usedLinesOnFile: usedOnFile,
-    });
-    if (!anchor) continue;
-
-    usedOnFile.add(anchor.line);
-    sharedUsedLinesByFile.set(scannablePath, usedOnFile);
-
-    candidates.push({
-      dedupeKey: remediationFindingDedupeKey(rule.name, `${path}:${anchor.line}`, scannablePath),
-      ruleName: rule.name,
-      displayName: meta.displayName,
-      description: meta.description,
-      impact: meta.impact,
-      impactStatement: meta.impactStatement,
-      risk: meta.risk,
-      riskStatement: meta.riskStatement,
-      filePath: scannablePath,
-      line: anchor.line,
-      startLine: anchor.startLine,
-      endLine: anchor.endLine,
-    });
-  }
-
-  return candidates;
-}
-
 function buildRemediationCandidatesForBatch(args: {
   rules: OrlReportRule[];
   workspacePath: string;
   prScannableFiles: Set<string>;
-  diagnostics: DiagnosticsShape | null;
-  diffChangedLines?: Map<string, number[]>;
 }): AuditCommentCandidate[] {
-  const { rules, workspacePath, prScannableFiles, diagnostics, diffChangedLines } = args;
+  const { rules, workspacePath, prScannableFiles } = args;
   const candidates: AuditCommentCandidate[] = [];
-  const sharedUsedLinesByFile = new Map<string, Set<number>>();
 
   for (const rule of rules) {
     const slotLimit = countRuleRemediationSlots(rule);
     if (slotLimit <= 0) continue;
 
-    const fromResolved = buildRemediationCandidatesFromResolvedLocations({
-      rule,
-      workspacePath,
-      prScannableFiles,
-    });
-    if (fromResolved.length > 0) {
-      candidates.push(...fromResolved.slice(0, slotLimit));
-      continue;
-    }
-
     candidates.push(
-      ...buildRemediationCandidatesFromFilesChanged({
+      ...buildRemediationCandidatesFromResolvedLocations({
         rule,
         workspacePath,
         prScannableFiles,
-        diagnostics,
-        diffChangedLines,
-        slotLimit,
-        sharedUsedLinesByFile,
-      })
+      }).slice(0, slotLimit)
     );
   }
 
@@ -721,14 +440,6 @@ export function extractAuditCommentCandidates(
     const batchRules = report.spec?.rules ?? [];
 
     if (anchorStrategy === 'remediation') {
-      logRemediationCommentDiagnostics({
-        batchId,
-        workspacePath,
-        report,
-        prScannableFiles,
-        diffChangedLines,
-      });
-
       const rulesWithFixes = batchRules.filter(
         (rule) => countRuleRemediationSlots(rule) > 0
       );
@@ -737,13 +448,7 @@ export function extractAuditCommentCandidates(
         rules: rulesWithFixes,
         workspacePath,
         prScannableFiles,
-        diagnostics,
-        diffChangedLines,
       });
-
-      console.log(
-        `[remediation-comments] batch=${batchId} extracted ${remediationCandidates.length} candidate(s) from report`
-      );
 
       for (const candidate of remediationCandidates) {
         if (seen.has(candidate.dedupeKey)) continue;
