@@ -3,6 +3,10 @@
  */
 import { setOutput } from './lib/github-output.js';
 import { tenantIdFromToken } from './lib/jwt.js';
+import {
+  DEFAULT_CHANNEL_NAME,
+  resolveRulesChannel,
+} from './lib/resolve-rules-channel.js';
 import { requireEnv } from './lib/env.js';
 import { runMain } from './lib/runner.js';
 
@@ -15,8 +19,23 @@ async function main(): Promise<void> {
   }
 
   const token = requireEnv('GOMBOC_ACCESS_TOKEN');
+  const rulesServiceUrl = (
+    process.env.RULES_SERVICE_URL ?? 'https://rules.app.gomboc.ai'
+  ).trim();
   const tenantId = tenantIdFromToken(token);
-  const channel = tenantId ? `${tenantId}/accounts/default` : 'default';
+
+  if (!tenantId) {
+    setOutput('channel', DEFAULT_CHANNEL_NAME);
+    console.log(`Resolved rules channel: ${DEFAULT_CHANNEL_NAME}`);
+    return;
+  }
+
+  const channel = await resolveRulesChannel({
+    token,
+    accountId: tenantId,
+    rulesServiceUrl,
+  });
+
   setOutput('channel', channel);
   console.log(`Resolved rules channel: ${channel}`);
 }

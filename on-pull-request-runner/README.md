@@ -93,7 +93,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 
 ## How it works
 
-1. Resolve rules channel from JWT (or `orl-channel` input)
+1. Resolve rules channel from JWT (or `orl-channel` input) via Rules Service channel lookup
 2. `orl rules pull` into a cached rulespace
 3. `git diff` PR base..head → scannable files and touch seeds
 4. `orl detect-language` per touch seed → touched workspaces
@@ -108,7 +108,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 |-------|---------|-------------|
 | `mode` | *(required)* | `audit` or `remediate` |
 | `max-changed-files` | `50` | Max PR-changed paths; fails if exceeded |
-| `orl-channel` | `""` | Rules channel; empty = JWT `tenantId/accounts/default` |
+| `orl-channel` | `""` | Rules channel; empty = resolve via Rules Service (global → set/default → accounts/default → default) |
 | `orl-version` | `v1.3.9-latest` | ORL image tag when `orl-image` empty |
 | `orl-image` | `""` | Full Docker image ref override |
 | `rules-service-url` | `https://rules.app.gomboc.ai` | Rules service base URL |
