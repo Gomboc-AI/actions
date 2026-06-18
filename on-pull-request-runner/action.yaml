@@ -151,6 +151,7 @@ runs:
       env:
         GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
         INPUT_ORL_CHANNEL: ${{ inputs.orl-channel }}
+        RULES_SERVICE_URL: ${{ inputs.rules-service-url }}
       run: node dist/resolve-channel.js
 
     - name: Cache rules
