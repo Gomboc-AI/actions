@@ -163,7 +163,9 @@ async function main(): Promise<void> {
   const actionPath = requireEnv('GITHUB_ACTION_PATH');
   const hooksDir = path.join(actionPath, 'hooks');
   const batchWorkRoot = artifactPath('orl-workspace');
-  const timeoutMs = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 300) * 1000;
+  const scanTimeoutSeconds = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 0);
+  const timeoutMs =
+    scanTimeoutSeconds > 0 ? scanTimeoutSeconds * 1000 : 0;
   const orlTimeout = (process.env.INPUT_ORL_TIMEOUT ?? '').trim() || undefined;
   const orlRuleTimeout =
     (process.env.INPUT_ORL_RULE_TIMEOUT ?? '').trim() || undefined;

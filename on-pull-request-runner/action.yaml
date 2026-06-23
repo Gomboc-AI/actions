@@ -38,9 +38,9 @@ inputs:
     required: false
     default: 'true'
   scan-timeout-seconds:
-    description: Timeout for each ORL remediate docker run (seconds)
+    description: Timeout for each ORL remediate docker run (seconds); empty = no limit
     required: false
-    default: '300'
+    default: ''
   orl-timeout:
     description: ORL global --timeout value (e.g. 10m, 90s); empty = no limit
     required: false

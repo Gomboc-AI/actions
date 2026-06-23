@@ -115,7 +115,7 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 | `integrations-service-url` | `https://integrations.app.gomboc.ai` | Integrations base URL |
 | `portal-service-url` | `https://app.gomboc.ai` | Portal base URL for rule links in inline comments |
 | `integrations-enabled` | `true` | Set `false` to skip Integrations POST |
-| `scan-timeout-seconds` | `300` | Per-batch Docker run timeout (hard kill) |
+| `scan-timeout-seconds` | `""` | Per-batch Docker run timeout (hard kill); empty = no limit |
 | `orl-timeout` | `""` | ORL global `--timeout` (e.g. `10m`); empty = no limit |
 | `orl-rule-timeout` | `10s` | ORL `--default-rule-timeout` per-rule audit cap |
 | `remediation-branch-prefix` | `gomboc/orl-remediation` | Bot branch prefix for remediate mode (`{prefix}-{pr_number}`) |
