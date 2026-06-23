@@ -109,14 +109,15 @@ Remediation uses `GITHUB_TOKEN` to push and open the stacked PR; `GOMBOC_ACCESS_
 | `mode` | *(required)* | `audit` or `remediate` |
 | `max-changed-files` | `50` | Max PR-changed paths; fails if exceeded |
 | `orl-channel` | `""` | Rules channel; empty = resolve via Rules Service (global → set/default → accounts/default → default) |
-| `orl-version` | `v1.3.9-latest` | ORL image tag when `orl-image` empty |
+| `orl-version` | `v1.4.1-latest` | ORL image tag when `orl-image` empty |
 | `orl-image` | `""` | Full Docker image ref override |
 | `rules-service-url` | `https://rules.app.gomboc.ai` | Rules service base URL |
 | `integrations-service-url` | `https://integrations.app.gomboc.ai` | Integrations base URL |
 | `portal-service-url` | `https://app.gomboc.ai` | Portal base URL for rule links in inline comments |
 | `integrations-enabled` | `true` | Set `false` to skip Integrations POST |
-| `scan-timeout-seconds` | `90` | Per-batch remediate timeout |
+| `scan-timeout-seconds` | `300` | Per-batch Docker run timeout (hard kill) |
 | `orl-timeout` | `""` | ORL global `--timeout` (e.g. `10m`); empty = no limit |
+| `orl-rule-timeout` | `10s` | ORL `--default-rule-timeout` per-rule audit cap |
 | `remediation-branch-prefix` | `gomboc/orl-remediation` | Bot branch prefix for remediate mode (`{prefix}-{pr_number}`) |
 | `comment-max-per-pr` | `50` | Max inline review comments per PR run (audit) |
 | `fail-on-findings` | `false` | Audit only: fail when findings or changes &gt; 0 |

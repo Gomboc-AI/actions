@@ -16,7 +16,7 @@ inputs:
   orl-version:
     description: ORL Docker image tag (used when orl-image is empty)
     required: false
-    default: 'v1.3.9-latest'
+    default: 'v1.4.1-latest'
   orl-image:
     description: Full Docker image ref; overrides orl-version when set
     required: false
@@ -40,11 +40,15 @@ inputs:
   scan-timeout-seconds:
     description: Timeout for each ORL remediate docker run (seconds)
     required: false
-    default: '90'
+    default: '300'
   orl-timeout:
     description: ORL global --timeout value (e.g. 10m, 90s); empty = no limit
     required: false
     default: ''
+  orl-rule-timeout:
+    description: ORL --default-rule-timeout value (e.g. 10s, 100ms); empty = ORL default (5s)
+    required: false
+    default: '10s'
   rules-cache-ttl-hours:
     description: Max age before rules cache is refreshed (hours)
     required: false
@@ -217,6 +221,7 @@ runs:
         ORL_RULES_DIR: ${{ runner.temp }}/orl-rules
         INPUT_SCAN_TIMEOUT_SECONDS: ${{ inputs.scan-timeout-seconds }}
         INPUT_ORL_TIMEOUT: ${{ inputs.orl-timeout }}
+        INPUT_ORL_RULE_TIMEOUT: ${{ inputs.orl-rule-timeout }}
         ORL_REMEDIATE_CONCURRENCY: '3'
       run: node dist/run-orl.js
 
