@@ -24,7 +24,7 @@ function loadBatches() {
  * Stages one batch, runs `orl remediate` in Docker, and copies report/diagnostics to artifacts.
  */
 async function runBatch(args) {
-    const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs, orlTimeout, } = args;
+    const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs, orlTimeout, orlRuleTimeout, } = args;
     const { workDir, remediatePath, stagedFiles } = stageBatchWorkspace({
         batch,
         workspaceRoot,
@@ -50,6 +50,9 @@ async function runBatch(args) {
     ];
     if (orlTimeout) {
         orlArgv.push('--timeout', orlTimeout);
+    }
+    if (orlRuleTimeout) {
+        orlArgv.push('--default-rule-timeout', orlRuleTimeout);
     }
     const { status, stderr, stdout } = await dockerRun({
         argv: [
@@ -117,8 +120,10 @@ async function main() {
     const actionPath = requireEnv('GITHUB_ACTION_PATH');
     const hooksDir = path.join(actionPath, 'hooks');
     const batchWorkRoot = artifactPath('orl-workspace');
-    const timeoutMs = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 90) * 1000;
+    const scanTimeoutSeconds = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 0);
+    const timeoutMs = scanTimeoutSeconds > 0 ? scanTimeoutSeconds * 1000 : 0;
     const orlTimeout = (process.env.INPUT_ORL_TIMEOUT ?? '').trim() || undefined;
+    const orlRuleTimeout = (process.env.INPUT_ORL_RULE_TIMEOUT ?? '').trim() || undefined;
     const concurrency = envInt('ORL_REMEDIATE_CONCURRENCY', 3);
     fs.mkdirSync(batchWorkRoot, { recursive: true });
     const results = await mapPool({
@@ -133,6 +138,7 @@ async function main() {
             batchWorkRoot,
             timeoutMs,
             orlTimeout,
+            orlRuleTimeout,
         }),
     });
     const outcome = mergeBatchResults(results);

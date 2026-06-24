@@ -33,8 +33,10 @@ export type RunBatchArgs = {
   hooksDir: string;
   batchWorkRoot: string;
   timeoutMs: number;
-  /** ORL global `--timeout` value (e.g. `10ms`); omitted when unset. */
+  /** ORL global `--timeout` value (e.g. `10m`); omitted when unset. */
   orlTimeout?: string;
+  /** ORL `--default-rule-timeout` value (e.g. `5s`); omitted when unset. */
+  orlRuleTimeout?: string;
 };
 
 /**
@@ -50,6 +52,7 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
     batchWorkRoot,
     timeoutMs,
     orlTimeout,
+    orlRuleTimeout,
   } = args;
 
   const { workDir, remediatePath, stagedFiles } = stageBatchWorkspace({
@@ -79,6 +82,9 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
   ];
   if (orlTimeout) {
     orlArgv.push('--timeout', orlTimeout);
+  }
+  if (orlRuleTimeout) {
+    orlArgv.push('--default-rule-timeout', orlRuleTimeout);
   }
 
   const { status, stderr, stdout } = await dockerRun({
@@ -157,8 +163,12 @@ async function main(): Promise<void> {
   const actionPath = requireEnv('GITHUB_ACTION_PATH');
   const hooksDir = path.join(actionPath, 'hooks');
   const batchWorkRoot = artifactPath('orl-workspace');
-  const timeoutMs = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 90) * 1000;
+  const scanTimeoutSeconds = envInt('INPUT_SCAN_TIMEOUT_SECONDS', 0);
+  const timeoutMs =
+    scanTimeoutSeconds > 0 ? scanTimeoutSeconds * 1000 : 0;
   const orlTimeout = (process.env.INPUT_ORL_TIMEOUT ?? '').trim() || undefined;
+  const orlRuleTimeout =
+    (process.env.INPUT_ORL_RULE_TIMEOUT ?? '').trim() || undefined;
   const concurrency = envInt('ORL_REMEDIATE_CONCURRENCY', 3);
 
   fs.mkdirSync(batchWorkRoot, { recursive: true });
@@ -176,6 +186,7 @@ async function main(): Promise<void> {
         batchWorkRoot,
         timeoutMs,
         orlTimeout,
+        orlRuleTimeout,
       }),
   });
 
