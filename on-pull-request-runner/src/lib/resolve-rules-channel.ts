@@ -9,6 +9,16 @@ const RETRY_DELAY_MS = 1000;
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+class TransientChannelLookupError extends Error {
+  constructor(
+    readonly channelName: string,
+    message: string
+  ) {
+    super(message);
+    this.name = 'TransientChannelLookupError';
+  }
+}
+
 /** Channel names to try, in priority order. */
 export function buildChannelCandidates(accountId: string): string[] {
   return [
@@ -22,6 +32,14 @@ export function buildChannelCandidates(accountId: string): string[] {
 type ChannelsGetResponse = {
   data?: { name?: string };
 };
+
+function isTransientLookupError(error: unknown): boolean {
+  if (!(error instanceof Error)) return true;
+  const match = /^HTTP (\d{3})/.exec(error.message);
+  if (!match) return true;
+  const status = Number(match[1]);
+  return status >= 500 && status < 600;
+}
 
 async function channelExists(args: {
   rulesServiceUrl: string;
@@ -54,10 +72,14 @@ async function channelExists(args: {
       return name || null;
     } catch (error) {
       if (attempt === MAX_RETRIES - 1) {
+        const message = `Failed to check channel "${args.channelName}" after ${MAX_RETRIES} attempts: ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+        if (isTransientLookupError(error)) {
+          throw new TransientChannelLookupError(args.channelName, message);
+        }
         throw new Error(
-          `Failed to check channel "${args.channelName}" after ${MAX_RETRIES} attempts: ${
-            error instanceof Error ? error.message : String(error)
-          }`
+          message
         );
       }
       await sleep(RETRY_DELAY_MS);
@@ -76,13 +98,23 @@ export async function resolveRulesChannel(args: {
   const candidates = buildChannelCandidates(args.accountId);
 
   for (const channelName of candidates) {
-    const resolved = await channelExists({
-      rulesServiceUrl: args.rulesServiceUrl,
-      token: args.token,
-      accountId: args.accountId,
-      channelName,
-    });
-    if (resolved) return resolved;
+    try {
+      const resolved = await channelExists({
+        rulesServiceUrl: args.rulesServiceUrl,
+        token: args.token,
+        accountId: args.accountId,
+        channelName,
+      });
+      if (resolved) return resolved;
+    } catch (error) {
+      if (error instanceof TransientChannelLookupError) {
+        console.warn(
+          `${error.message}. Using "${error.channelName}" and deferring validation to orl rules pull.`
+        );
+        return error.channelName;
+      }
+      throw error;
+    }
   }
 
   return DEFAULT_CHANNEL_NAME;
