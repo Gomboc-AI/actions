@@ -14,10 +14,29 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
       baseSha: 'base',
       headSha: 'head',
       headRef: 'feature/orl',
+      baseRef: 'main',
       repository: 'gomboc-ai/actions',
+      repositoryId: 'repo-1',
+      repositoryName: 'actions',
+      ownerId: 'owner-1',
+      ownerName: 'gomboc-ai',
       headRepoFullName: 'gomboc-ai/actions',
       isFork: false,
+      title: 'Apply ORL fixes',
+      htmlUrl: 'https://github.example.com/gomboc-ai/actions/pull/42',
+      state: 'OPEN',
       authorLogin: 'octocat',
+    },
+    gitDiffs: {
+      'main.tf': 'diff --git a/main.tf b/main.tf',
+    },
+    remediatedFileContent: {
+      'main.tf': 'resource "aws_s3_bucket" "ok" {}',
+    },
+    workflowStatus: { status: 'success', errors: [] },
+    timing: {
+      startedAt: '2026-07-01T09:59:00.000Z',
+      completedAt: '2026-07-01T10:00:00.000Z',
     },
     orlReport: {
       type: 'Report',
@@ -34,7 +53,7 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
     },
   });
 
-  assert.equal(body.version, 1);
+  assert.equal(body.version, 2);
   assert.equal(body.requestOrigin, 'GITHUB_ACTION');
   assert.equal(body.effect, 'SubmitForReview');
   assert.equal(body.reports.length, 1);
@@ -44,12 +63,39 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
     headSha: 'head',
   });
   assert.equal(body.durationInSeconds, 37);
+  assert.deepEqual(body.gitDiffs, {
+    'main.tf': 'diff --git a/main.tf b/main.tf',
+  });
+  assert.deepEqual(body.remediatedFileContent, {
+    'main.tf': 'resource "aws_s3_bucket" "ok" {}',
+  });
+  assert.deepEqual(body.workflowStatus, { status: 'success', errors: [] });
+  assert.deepEqual(body.timing, {
+    startedAt: '2026-07-01T09:59:00.000Z',
+    completedAt: '2026-07-01T10:00:00.000Z',
+  });
   assert.deepEqual(body.scmContext, {
     scmType: 'GITHUB',
+    scmRepositoryId: 'repo-1',
     originalPullRequest: {
-      id: '42',
-      url: 'https://github.example.com/gomboc-ai/actions/pull/42',
-      author: 'octocat',
+      pullRequest: {
+        repositoryId: 'repo-1',
+        repositoryName: 'actions',
+        ownerId: 'owner-1',
+        ownerName: 'gomboc-ai',
+        number: '42',
+        url: 'https://github.example.com/gomboc-ai/actions/pull/42',
+        title: 'Apply ORL fixes',
+        sourceBranch: 'feature/orl',
+        targetBranch: 'main',
+        status: 'OPEN',
+        provider: 'GitHub',
+        authoredByGomboc: false,
+      },
+      branchCommit: {
+        sha: 'head',
+        branchName: 'feature/orl',
+      },
     },
   });
 });
@@ -60,20 +106,37 @@ test('buildCreateOrlReportEventBody includes resultingPullRequest in scmContext'
     branch: 'feature/orl',
     durationInSeconds: 12,
     resultingPullRequest: {
-      id: '99',
+      repositoryId: 'repo-1',
+      repositoryName: 'actions',
+      ownerId: 'owner-1',
+      ownerName: 'gomboc-ai',
+      number: '99',
       url: 'https://github.com/gomboc-ai/actions/pull/99',
-      author: 'github-actions[bot]',
+      title: 'chore(gomboc): ORL remediation for PR #42',
+      sourceBranch: 'gomboc/orl-remediation-42',
+      targetBranch: 'feature/orl',
+      status: 'OPEN',
+      provider: 'GitHub',
     },
     github: {
       number: 42,
       baseSha: 'base',
       headSha: 'head',
       headRef: 'feature/orl',
+      baseRef: 'main',
       repository: 'gomboc-ai/actions',
+      repositoryId: 'repo-1',
+      repositoryName: 'actions',
+      ownerId: 'owner-1',
+      ownerName: 'gomboc-ai',
       headRepoFullName: 'gomboc-ai/actions',
       isFork: false,
+      title: 'Apply ORL fixes',
+      htmlUrl: 'https://github.com/gomboc-ai/actions/pull/42',
+      state: 'OPEN',
       authorLogin: 'octocat',
     },
+    workflowStatus: { status: 'success', errors: [] },
     orlReport: {
       type: 'Report',
       version: 'v1',
@@ -90,8 +153,16 @@ test('buildCreateOrlReportEventBody includes resultingPullRequest in scmContext'
   });
 
   assert.deepEqual(body.scmContext?.resultingPullRequest, {
-    id: '99',
+    repositoryId: 'repo-1',
+    repositoryName: 'actions',
+    ownerId: 'owner-1',
+    ownerName: 'gomboc-ai',
+    number: '99',
     url: 'https://github.com/gomboc-ai/actions/pull/99',
-    author: 'github-actions[bot]',
+    title: 'chore(gomboc): ORL remediation for PR #42',
+    sourceBranch: 'gomboc/orl-remediation-42',
+    targetBranch: 'feature/orl',
+    status: 'OPEN',
+    provider: 'GitHub',
   });
 });

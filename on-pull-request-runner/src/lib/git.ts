@@ -29,6 +29,16 @@ export function gitDiffNameOnly(args: GitDiffNameOnlyArgs): string[] {
     .filter(Boolean);
 }
 
+/** Returns the unified diff for one repo-relative path between two commits. */
+export function gitDiffForPath(args: GitDiffNameOnlyArgs & { path: string }): string {
+  const out = execFileSync(
+    'git',
+    ['diff', args.baseSha, args.headSha, '--', args.path],
+    { cwd: args.cwd, encoding: 'utf8', maxBuffer: 50 * 1024 * 1024 }
+  );
+  return out.trim();
+}
+
 /** Returns porcelain status output; empty when working tree is clean. */
 export function gitStatusPorcelain(cwd: string): string {
   return git(['status', '--porcelain'], cwd);

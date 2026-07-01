@@ -1,17 +1,36 @@
 /**
  * Shared types for ORL reports, workspace discovery, and evaluation batches.
  */
-import type { CreateOrlReportEventRequestBody } from '@gomboc-ai/gomboc-node-sdk';
+import type { IIntegrationsServiceSdk } from '@gomboc-ai/gomboc-node-sdk';
 
-/** ORL report payload accepted by Integrations `createOrlReportEvent`. */
-export type IntegrationsOrlReport = NonNullable<
-  NonNullable<CreateOrlReportEventRequestBody['reports'][number]>['orlReport']
->;
+export type CreateOrlReportEventV2RequestBody = Parameters<
+  IIntegrationsServiceSdk['createOrlReportEventV2']
+>[0];
 
 export type IntegrationsOrlReportGitHub = {
   repository: string;
   prNumber: number;
   headSha: string;
+};
+
+/** Normalized ORL report payload accepted by Integrations `createOrlReportEventV2`. */
+export type IntegrationsOrlReport = {
+  type: 'Report';
+  version: string;
+  metadata: {
+    name: string;
+    description?: string;
+    annotations?: Record<string, string>;
+  };
+  workspace: string;
+  language: string;
+  rules_applied: number;
+  findings: number;
+  fixes: number;
+  changes: number;
+  rules: unknown[];
+  errors: unknown[];
+  github?: IntegrationsOrlReportGitHub;
 };
 
 /** File/line anchor in an ORL report (`Location` in report schema). */

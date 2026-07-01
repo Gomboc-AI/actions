@@ -1,13 +1,13 @@
 /**
- * Builds Integrations `createOrlReportEvent` request bodies for GitHub Actions.
+ * Builds Integrations `createOrlReportEventV2` request bodies for GitHub Actions.
  */
-import type { CreateOrlReportEventRequestBody } from '@gomboc-ai/gomboc-node-sdk';
 import {
   buildGitHubScmContext,
   type PullRequestContext,
   type ScmPullRequestRef,
 } from './github-context.js';
 import type {
+  CreateOrlReportEventV2RequestBody,
   IntegrationsOrlReport,
   IntegrationsOrlReportGitHub,
 } from '../types.js';
@@ -20,7 +20,11 @@ export function buildCreateOrlReportEventBody(args: {
   github: PullRequestContext;
   durationInSeconds: number;
   resultingPullRequest?: ScmPullRequestRef;
-}): CreateOrlReportEventRequestBody {
+  gitDiffs?: Record<string, string>;
+  remediatedFileContent?: Record<string, string>;
+  workflowStatus: { status: 'success' | 'failure'; errors: string[] };
+  timing?: { startedAt?: string; completedAt?: string };
+}): CreateOrlReportEventV2RequestBody {
   const github: IntegrationsOrlReportGitHub = {
     repository: args.github.repository,
     prNumber: args.github.number,
@@ -33,18 +37,26 @@ export function buildCreateOrlReportEventBody(args: {
   };
 
   return {
-    version: 1.0,
+    version: 2.0,
     requestOrigin: 'GITHUB_ACTION',
     effect: 'SubmitForReview',
     reports: [
       {
         path: args.path,
         branch: args.branch,
+        timestamp: args.timing?.completedAt,
+        resultingPullRequest: args.resultingPullRequest,
+        workflowStatus: args.workflowStatus,
+        timing: args.timing,
         orlReport,
       },
     ],
     errors: [],
     durationInSeconds: args.durationInSeconds,
+    gitDiffs: args.gitDiffs,
+    remediatedFileContent: args.remediatedFileContent,
+    workflowStatus: args.workflowStatus,
+    timing: args.timing,
     scmContext: buildGitHubScmContext(args.github, args.resultingPullRequest),
   };
 }

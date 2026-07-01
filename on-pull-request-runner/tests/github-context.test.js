@@ -5,20 +5,54 @@ import { parseScmPullRequestRef } from '../dist/lib/github-context.js';
 test('parseScmPullRequestRef accepts valid remediation PR refs', () => {
   assert.deepEqual(
     parseScmPullRequestRef({
-      id: '99',
+      repositoryId: 'repo-1',
+      repositoryName: 'actions',
+      ownerId: 'owner-1',
+      ownerName: 'gomboc-ai',
+      number: '99',
       url: 'https://github.com/gomboc-ai/actions/pull/99',
-      author: 'github-actions[bot]',
+      title: 'chore(gomboc): ORL remediation for PR #42',
+      sourceBranch: 'gomboc/orl-remediation-42',
+      targetBranch: 'feature/orl',
+      status: 'OPEN',
+      provider: 'GitHub',
     }),
     {
-      id: '99',
+      repositoryId: 'repo-1',
+      repositoryName: 'actions',
+      ownerId: 'owner-1',
+      ownerName: 'gomboc-ai',
+      number: '99',
       url: 'https://github.com/gomboc-ai/actions/pull/99',
-      author: 'github-actions[bot]',
+      title: 'chore(gomboc): ORL remediation for PR #42',
+      sourceBranch: 'gomboc/orl-remediation-42',
+      targetBranch: 'feature/orl',
+      status: 'OPEN',
+      provider: 'GitHub',
     }
   );
 });
 
 test('parseScmPullRequestRef rejects incomplete refs', () => {
   assert.equal(parseScmPullRequestRef(null), undefined);
-  assert.equal(parseScmPullRequestRef({ id: '99', url: 'https://example.com' }), undefined);
-  assert.equal(parseScmPullRequestRef({ id: '', url: 'https://example.com', author: 'bot' }), undefined);
+  assert.equal(
+    parseScmPullRequestRef({ number: '99', url: 'https://example.com' }),
+    undefined
+  );
+  assert.equal(
+    parseScmPullRequestRef({
+      repositoryId: 'repo-1',
+      repositoryName: 'actions',
+      ownerId: 'owner-1',
+      ownerName: 'gomboc-ai',
+      number: '',
+      url: 'https://example.com',
+      title: 'Remediate',
+      sourceBranch: 'bot',
+      targetBranch: 'feature',
+      status: 'OPEN',
+      provider: 'GitHub',
+    }),
+    undefined
+  );
 });

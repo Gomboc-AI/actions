@@ -19,7 +19,10 @@ import {
   gitStatusPorcelain,
 } from './lib/git.js';
 import { GitHubClient, parseOwnerRepo } from './lib/clients/github-client.js';
-import { loadPullRequestContext } from './lib/github-context.js';
+import {
+  loadPullRequestContext,
+  type ScmPullRequestRef,
+} from './lib/github-context.js';
 import { requireEnv } from './lib/env.js';
 import { totalsFromBatchReports } from './lib/report-counts.js';
 import { runMain } from './lib/runner.js';
@@ -312,22 +315,22 @@ async function main(): Promise<void> {
     sourceHeadRef: pr.headRef,
   });
 
-  const remediationIdentity = await github.getPullRequestIdentity({
-    owner,
-    repo,
-    pullNumber: remediationPullNumber,
-  });
+  const remediationPullRequest: ScmPullRequestRef = {
+    repositoryId: pr.repositoryId,
+    repositoryName: pr.repositoryName,
+    ownerId: pr.ownerId,
+    ownerName: pr.ownerName,
+    number: String(remediationPullNumber),
+    url: remediationUrl,
+    title: prTitle,
+    sourceBranch: botBranch,
+    targetBranch: pr.headRef,
+    status: 'OPEN',
+    provider: 'GitHub',
+  };
   fs.writeFileSync(
     artifactPath('remediation-pr.json'),
-    JSON.stringify(
-      {
-        id: String(remediationIdentity.number),
-        url: remediationIdentity.html_url,
-        author: remediationIdentity.authorLogin,
-      },
-      null,
-      2
-    )
+    JSON.stringify(remediationPullRequest, null, 2)
   );
 }
 
