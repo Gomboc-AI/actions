@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import {
+  portalChannelUrl,
   portalRuleUrl,
   portalRunUrl,
   rulesetPathFromRuleName,
@@ -30,6 +31,16 @@ describe('portal-url', () => {
   it('builds portal runs page URL from base URL', () => {
     assert.equal(portalRunUrl('https://app.gomboc.ai/'), 'https://app.gomboc.ai/runs/');
     assert.equal(portalRunUrl('https://app.gomboc.ai'), 'https://app.gomboc.ai/runs/');
+  });
+
+  it('builds portal data-library URL from rules channel name', () => {
+    assert.equal(
+      portalChannelUrl(
+        'https://app.dev.gcp.gomboc.ai/',
+        '15c221bc-69c0-4834-a0b7-89cf0c0fd857/accounts/global'
+      ),
+      'https://app.dev.gcp.gomboc.ai/data-library/channels/15c221bc-69c0-4834-a0b7-89cf0c0fd857/accounts/global'
+    );
   });
 
   it('leaves rule names without trailing digits unchanged', () => {

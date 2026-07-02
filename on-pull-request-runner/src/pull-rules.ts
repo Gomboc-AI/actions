@@ -7,6 +7,19 @@ import { currentUidGid, dockerRunOrThrow } from './lib/docker.js';
 import { requireEnv } from './lib/env.js';
 import { runMain } from './lib/runner.js';
 
+function countRuleFiles(dir: string): number {
+  let count = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const entryPath = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) {
+      count += countRuleFiles(entryPath);
+    } else if (entry.isFile()) {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 async function main(): Promise<void> {
   const rulesDir = process.env.ORL_RULES_DIR ?? artifactPath('orl-rules');
   fs.mkdirSync(rulesDir, { recursive: true });
@@ -36,7 +49,8 @@ async function main(): Promise<void> {
     ],
   });
 
-  console.log(`Rules pulled to ${rulesDir}`);
+  const ruleCount = countRuleFiles(rulesDir);
+  console.log(`Rules pulled to ${rulesDir} (${ruleCount} rules)`);
   fs.mkdirSync(getArtifactsRoot(), { recursive: true });
   fs.writeFileSync(artifactPath('rules-dir.txt'), rulesDir, 'utf8');
 }

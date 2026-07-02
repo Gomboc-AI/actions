@@ -8,10 +8,15 @@ import {
   resolveRulesChannel,
 } from './lib/resolve-rules-channel.js';
 import { requireEnv } from './lib/env.js';
+import { portalChannelUrl } from './lib/portal-url.js';
 import { runMain } from './lib/runner.js';
 
 async function main(): Promise<void> {
   const inputChannel = (process.env.INPUT_ORL_CHANNEL ?? '').trim();
+  const portalServiceUrl = (
+    process.env.INPUT_PORTAL_SERVICE_URL?.trim() || 'https://app.gomboc.ai'
+  ).replace(/\/+$/, '');
+
   if (inputChannel) {
     setOutput('channel', inputChannel);
     console.log(`Using orl-channel input: ${inputChannel}`);
@@ -26,7 +31,12 @@ async function main(): Promise<void> {
 
   if (!tenantId) {
     setOutput('channel', DEFAULT_CHANNEL_NAME);
-    console.log(`Resolved rules channel: ${DEFAULT_CHANNEL_NAME}`);
+    console.log(
+      `Resolved rules channel: ${DEFAULT_CHANNEL_NAME} (Portal: ${portalChannelUrl(
+        portalServiceUrl,
+        DEFAULT_CHANNEL_NAME
+      )})`
+    );
     return;
   }
 
@@ -37,7 +47,12 @@ async function main(): Promise<void> {
   });
 
   setOutput('channel', channel);
-  console.log(`Resolved rules channel: ${channel}`);
+  console.log(
+    `Resolved rules channel: ${channel} (Portal: ${portalChannelUrl(
+      portalServiceUrl,
+      channel
+    )})`
+  );
 }
 
 runMain(main);

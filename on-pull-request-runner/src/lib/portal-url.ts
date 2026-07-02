@@ -35,6 +35,17 @@ export function portalRunUrl(portalBaseUrl: string): string {
   return `${base}/runs/`;
 }
 
+/** Portal channel page URL for a resolved rules channel. */
+export function portalChannelUrl(portalBaseUrl: string, channelName: string): string {
+  const base = portalBaseUrl.trim().replace(/\/+$/, '');
+  const segments = channelName
+    .trim()
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment));
+  return `${base}/data-library/channels/${segments.join('/')}`;
+}
+
 export function formatRuleDisplayLink(args: {
   displayName: string;
   ruleName: string;
