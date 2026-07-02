@@ -76,7 +76,6 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
   });
   assert.deepEqual(body.scmContext, {
     scmType: 'GITHUB',
-    scmRepositoryId: 'repo-1',
     originalPullRequest: {
       pullRequest: {
         repositoryId: 'repo-1',

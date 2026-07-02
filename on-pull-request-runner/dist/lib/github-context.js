@@ -79,7 +79,6 @@ export function pullRequestUrl(pr) {
 export function buildGitHubScmContext(originalPullRequest, resultingPullRequest) {
     const scmContext = {
         scmType: 'GITHUB',
-        scmRepositoryId: originalPullRequest.repositoryId,
         originalPullRequest: {
             pullRequest: {
                 ...externalPullRequestFromContext(originalPullRequest),

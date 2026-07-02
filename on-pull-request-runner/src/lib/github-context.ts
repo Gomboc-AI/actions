@@ -161,7 +161,6 @@ export function buildGitHubScmContext(
 ): IntegrationsScmContext {
   const scmContext: IntegrationsScmContext = {
     scmType: 'GITHUB',
-    scmRepositoryId: originalPullRequest.repositoryId,
     originalPullRequest: {
       pullRequest: {
         ...externalPullRequestFromContext(originalPullRequest),
