@@ -165,7 +165,7 @@ runs:
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ${{ runner.temp }}/orl-rules
-        key: orl-rules-${{ steps.orl-image.outputs.ref }}-${{ inputs.rules-service-url }}-${{ steps.resolve-channel.outputs.channel }}
+        key: orl-rules-${{ steps.orl-image.outputs.ref }}-${{ inputs.rules-service-url }}-${{ steps.resolve-channel.outputs.encoded-channel }}
 
     - name: Pull rules
       id: pull-rules

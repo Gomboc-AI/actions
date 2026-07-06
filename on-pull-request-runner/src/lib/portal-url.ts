@@ -35,15 +35,43 @@ export function portalRunUrl(portalBaseUrl: string): string {
   return `${base}/runs/`;
 }
 
-/** Portal channel page URL for a resolved rules channel. */
-export function portalChannelUrl(portalBaseUrl: string, channelName: string): string {
-  const base = portalBaseUrl.trim().replace(/\/+$/, '');
-  const segments = channelName
+/** URL-encodes a rules channel while preserving slash-delimited path segments. */
+export function encodedChannelPath(channelName: string): string {
+  return channelName
     .trim()
     .split('/')
     .filter(Boolean)
-    .map((segment) => encodeURIComponent(segment));
-  return `${base}/data-library/channels/${segments.join('/')}`;
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+}
+
+export function policySetNameFromChannel(channelName: string): string | undefined {
+  const segments = channelName.trim().split('/').filter(Boolean);
+  const setIndex = segments.indexOf('set');
+  if (setIndex === -1) return undefined;
+  return segments.slice(setIndex + 1).join('/') || undefined;
+}
+
+export function portalPolicySetUrl(
+  portalBaseUrl: string,
+  channelName: string
+): string | undefined {
+  const policySetName = policySetNameFromChannel(channelName);
+  if (!policySetName) return undefined;
+
+  const base = portalBaseUrl.trim().replace(/\/+$/, '');
+  const encodedPolicySetName = policySetName
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `${base}/policy-sets/${encodedPolicySetName}`;
+}
+
+/** Portal channel page URL for a resolved rules channel. */
+export function portalChannelUrl(portalBaseUrl: string, channelName: string): string {
+  const base = portalBaseUrl.trim().replace(/\/+$/, '');
+  return `${base}/data-library/channels/${encodedChannelPath(channelName)}`;
 }
 
 export function formatRuleDisplayLink(args: {

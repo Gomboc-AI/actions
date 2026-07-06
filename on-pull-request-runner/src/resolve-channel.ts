@@ -8,8 +8,31 @@ import {
   resolveRulesChannel,
 } from './lib/resolve-rules-channel.js';
 import { requireEnv } from './lib/env.js';
-import { portalChannelUrl } from './lib/portal-url.js';
+import {
+  encodedChannelPath,
+  portalChannelUrl,
+  portalPolicySetUrl,
+} from './lib/portal-url.js';
 import { runMain } from './lib/runner.js';
+
+function setChannelOutputs(channel: string): void {
+  setOutput('channel', channel);
+  setOutput('encoded-channel', encodedChannelPath(channel));
+}
+
+function formatChannelLogLine(
+  label: string,
+  channel: string,
+  portalServiceUrl: string
+): string {
+  const policySetUrl = portalPolicySetUrl(portalServiceUrl, channel);
+  const lines = [`${label}: ${channel}`];
+  if (policySetUrl) {
+    lines.push(`Policy set: ${policySetUrl}`);
+  }
+  lines.push(`Channel: ${portalChannelUrl(portalServiceUrl, channel)}`);
+  return lines.join('\n');
+}
 
 async function main(): Promise<void> {
   const inputChannel = (process.env.INPUT_ORL_CHANNEL ?? '').trim();
@@ -18,8 +41,10 @@ async function main(): Promise<void> {
   ).replace(/\/+$/, '');
 
   if (inputChannel) {
-    setOutput('channel', inputChannel);
-    console.log(`Using orl-channel input: ${inputChannel}`);
+    setChannelOutputs(inputChannel);
+    console.log(
+      formatChannelLogLine('Using orl-channel input', inputChannel, portalServiceUrl)
+    );
     return;
   }
 
@@ -30,12 +55,9 @@ async function main(): Promise<void> {
   const tenantId = tenantIdFromToken(token);
 
   if (!tenantId) {
-    setOutput('channel', DEFAULT_CHANNEL_NAME);
+    setChannelOutputs(DEFAULT_CHANNEL_NAME);
     console.log(
-      `Resolved rules channel: ${DEFAULT_CHANNEL_NAME} (Portal: ${portalChannelUrl(
-        portalServiceUrl,
-        DEFAULT_CHANNEL_NAME
-      )})`
+      formatChannelLogLine('Resolved rules channel', DEFAULT_CHANNEL_NAME, portalServiceUrl)
     );
     return;
   }
@@ -46,12 +68,9 @@ async function main(): Promise<void> {
     rulesServiceUrl,
   });
 
-  setOutput('channel', channel);
+  setChannelOutputs(channel);
   console.log(
-    `Resolved rules channel: ${channel} (Portal: ${portalChannelUrl(
-      portalServiceUrl,
-      channel
-    )})`
+    formatChannelLogLine('Resolved rules channel', channel, portalServiceUrl)
   );
 }
 
