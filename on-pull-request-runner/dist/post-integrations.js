@@ -40,6 +40,13 @@ function loadScannableFiles() {
 function nonEmptyRecord(record) {
     return Object.keys(record).length ? record : undefined;
 }
+function jsonSizeBytes(value) {
+    return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}
+function formatBytes(bytes) {
+    const mib = bytes / (1024 * 1024);
+    return `${bytes} bytes (${mib.toFixed(2)} MiB)`;
+}
 function collectGitDiffs(args) {
     const diffs = {};
     for (const file of args.files) {
@@ -135,6 +142,18 @@ async function main() {
         workflowStatus,
         timing,
     });
+    const requestSize = jsonSizeBytes(body);
+    const sizeBreakdown = {
+        orlReport: jsonSizeBytes(body.reports[0]?.orlReport),
+        gitDiffs: jsonSizeBytes(body.gitDiffs),
+        remediatedFileContent: jsonSizeBytes(body.remediatedFileContent),
+        scmContext: jsonSizeBytes(body.scmContext),
+    };
+    console.log(`Integrations POST request size: ${formatBytes(requestSize)} ` +
+        `(orlReport=${formatBytes(sizeBreakdown.orlReport)}, ` +
+        `gitDiffs=${formatBytes(sizeBreakdown.gitDiffs)}, ` +
+        `remediatedFileContent=${formatBytes(sizeBreakdown.remediatedFileContent)}, ` +
+        `scmContext=${formatBytes(sizeBreakdown.scmContext)})`);
     const sdk = await initIntegrationsServiceSdk({
         accessToken: token,
         accountId,

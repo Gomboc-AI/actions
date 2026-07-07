@@ -65,6 +65,15 @@ function nonEmptyRecord(record: Record<string, string>): Record<string, string> 
   return Object.keys(record).length ? record : undefined;
 }
 
+function jsonSizeBytes(value: unknown): number {
+  return Buffer.byteLength(JSON.stringify(value), 'utf8');
+}
+
+function formatBytes(bytes: number): string {
+  const mib = bytes / (1024 * 1024);
+  return `${bytes} bytes (${mib.toFixed(2)} MiB)`;
+}
+
 function collectGitDiffs(args: {
   baseSha: string;
   headSha: string;
@@ -181,6 +190,21 @@ async function main(): Promise<void> {
     workflowStatus,
     timing,
   });
+
+  const requestSize = jsonSizeBytes(body);
+  const sizeBreakdown = {
+    orlReport: jsonSizeBytes(body.reports[0]?.orlReport),
+    gitDiffs: jsonSizeBytes(body.gitDiffs),
+    remediatedFileContent: jsonSizeBytes(body.remediatedFileContent),
+    scmContext: jsonSizeBytes(body.scmContext),
+  };
+  console.log(
+    `Integrations POST request size: ${formatBytes(requestSize)} ` +
+      `(orlReport=${formatBytes(sizeBreakdown.orlReport)}, ` +
+      `gitDiffs=${formatBytes(sizeBreakdown.gitDiffs)}, ` +
+      `remediatedFileContent=${formatBytes(sizeBreakdown.remediatedFileContent)}, ` +
+      `scmContext=${formatBytes(sizeBreakdown.scmContext)})`
+  );
 
   const sdk = await initIntegrationsServiceSdk({
     accessToken: token,
