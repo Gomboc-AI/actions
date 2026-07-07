@@ -30,6 +30,8 @@ export type MergeOutcome = {
 
 function emptyReport(): OrlReport {
   return {
+    type: 'Report',
+    version: 'v1',
     metadata: { name: 'merged', display_name: 'Gomboc ORL (merged)' },
     spec: {
       workspace: '.',

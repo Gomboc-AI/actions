@@ -4,6 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { initIntegrationsServiceSdk } from '@gomboc-ai/gomboc-node-sdk';
+import yaml from 'yaml';
 import { artifactPath } from './lib/artifacts.js';
 import { appendActionNotice, integrationsErrorMessage, } from './lib/action-notices.js';
 import { buildCreateOrlReportEventBody } from './lib/build-orl-report-event.js';
@@ -94,7 +95,7 @@ async function main() {
     const pr = loadPullRequestContext();
     const workspaceRoot = requireEnv('GITHUB_WORKSPACE');
     const mode = (process.env.INPUT_MODE ?? '').trim();
-    const orlReport = loadJson(artifactPath('normalized-report.json'));
+    const orlReport = yaml.parse(fs.readFileSync(artifactPath('merged-report.yaml'), 'utf8'));
     const batches = loadJson(artifactPath('evaluation-batches.json'));
     const paths = [...new Set(batches.batches.map((b) => b.workspacePath))];
     const reportPath = paths.length === 1 ? paths[0] : '.';

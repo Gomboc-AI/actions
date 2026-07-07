@@ -51,7 +51,7 @@ export function normalizeOrlReport(report) {
         findings: totals.findings,
         fixes: totals.fixes,
         changes: totals.changes,
-        rules: [],
+        rules: spec.rules ?? [],
         errors: spec.errors ?? [],
     };
 }

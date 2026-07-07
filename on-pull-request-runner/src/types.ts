@@ -13,8 +13,8 @@ export type IntegrationsOrlReportGitHub = {
   headSha: string;
 };
 
-/** Normalized ORL report payload accepted by Integrations `createOrlReportEventV2`. */
-export type IntegrationsOrlReport = {
+/** Normalized ORL report payload used by PR feedback and summaries. */
+export type NormalizedOrlReport = {
   type: 'Report';
   version: string;
   metadata: {
@@ -30,6 +30,11 @@ export type IntegrationsOrlReport = {
   changes: number;
   rules: unknown[];
   errors: unknown[];
+  github?: IntegrationsOrlReportGitHub;
+};
+
+/** Raw ORL report payload sent to Integrations `createOrlReportEventV2`. */
+export type IntegrationsOrlReport = OrlReport & {
   github?: IntegrationsOrlReportGitHub;
 };
 
@@ -73,6 +78,8 @@ export type OrlReportRule = {
 
 /** Parsed ORL `report.yaml` top-level shape. */
 export type OrlReport = {
+  type?: string;
+  version?: string;
   metadata: {
     name: string;
     display_name?: string;

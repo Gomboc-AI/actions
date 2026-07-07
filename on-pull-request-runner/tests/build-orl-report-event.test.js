@@ -42,14 +42,24 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
       type: 'Report',
       version: 'v1',
       metadata: { name: 'merged' },
-      workspace: '.',
-      language: 'terraform',
-      rules_applied: 1,
-      findings: 2,
-      fixes: 0,
-      changes: 0,
-      rules: [],
-      errors: [],
+      spec: {
+        workspace: '.',
+        language: 'terraform',
+        rules_applied: 1,
+        findings: 2,
+        fixes: 0,
+        changes: 0,
+        rules: [
+          {
+            name: 'orl-rule:s3',
+            findings: 2,
+            metadata: {
+              description: 'raw rule metadata should be preserved',
+            },
+          },
+        ],
+        errors: [],
+      },
     },
   });
 
@@ -62,6 +72,17 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
     prNumber: 42,
     headSha: 'head',
   });
+  assert.equal(body.reports[0]?.orlReport?.type, 'Report');
+  assert.equal(body.reports[0]?.orlReport?.version, 'v1');
+  assert.deepEqual(body.reports[0]?.orlReport?.spec?.rules, [
+    {
+      name: 'orl-rule:s3',
+      findings: 2,
+      metadata: {
+        description: 'raw rule metadata should be preserved',
+      },
+    },
+  ]);
   assert.equal(body.durationInSeconds, 37);
   assert.deepEqual(body.gitDiffs, {
     'main.tf': 'diff --git a/main.tf b/main.tf',
@@ -140,14 +161,16 @@ test('buildCreateOrlReportEventBody includes resultingPullRequest in scmContext'
       type: 'Report',
       version: 'v1',
       metadata: { name: 'merged' },
-      workspace: '.',
-      language: 'terraform',
-      rules_applied: 1,
-      findings: 0,
-      fixes: 1,
-      changes: 1,
-      rules: [],
-      errors: [],
+      spec: {
+        workspace: '.',
+        language: 'terraform',
+        rules_applied: 1,
+        findings: 0,
+        fixes: 1,
+        changes: 1,
+        rules: [],
+        errors: [],
+      },
     },
   });
 
