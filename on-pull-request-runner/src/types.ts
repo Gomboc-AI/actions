@@ -7,12 +7,6 @@ export type CreateOrlReportEventV2RequestBody = Parameters<
   IIntegrationsServiceSdk['createOrlReportEventV2']
 >[0];
 
-export type IntegrationsOrlReportGitHub = {
-  repository: string;
-  prNumber: number;
-  headSha: string;
-};
-
 /** Normalized ORL report payload used by PR feedback and summaries. */
 export type NormalizedOrlReport = {
   type: 'Report';
@@ -30,13 +24,16 @@ export type NormalizedOrlReport = {
   changes: number;
   rules: unknown[];
   errors: unknown[];
-  github?: IntegrationsOrlReportGitHub;
 };
 
-/** Raw ORL report payload sent to Integrations `createOrlReportEventV2`. */
-export type IntegrationsOrlReport = OrlReport & {
-  github?: IntegrationsOrlReportGitHub;
-};
+/** Flat ORL report payload sent to Integrations `createOrlReportEventV2`. */
+export type IntegrationsOrlReport = NonNullable<
+  CreateOrlReportEventV2RequestBody['reports'][number]['orlReport']
+>;
+
+export type IntegrationsOrlReportRule = IntegrationsOrlReport['rules'][number];
+export type IntegrationsOrlFindingLocation =
+  NonNullable<IntegrationsOrlReportRule['findingLocations']>[number];
 
 /** File/line anchor in an ORL report (`Location` in report schema). */
 export type OrlLocation = {

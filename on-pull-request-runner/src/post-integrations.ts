@@ -20,7 +20,7 @@ import {
 } from './lib/github-context.js';
 import { gitDiffForPath } from './lib/git.js';
 import { tenantIdFromToken } from './lib/jwt.js';
-import type { IntegrationsOrlReport } from './types.js';
+import type { OrlReport } from './types.js';
 import { runMain } from './lib/runner.js';
 
 type RunComplete = {
@@ -141,7 +141,7 @@ async function main(): Promise<void> {
   const mode = (process.env.INPUT_MODE ?? '').trim();
   const orlReport = yaml.parse(
     fs.readFileSync(artifactPath('merged-report.yaml'), 'utf8')
-  ) as IntegrationsOrlReport;
+  ) as OrlReport;
 
   const batches = loadJson<{ batches: Array<{ workspacePath: string }> }>(
     artifactPath('evaluation-batches.json')

@@ -67,18 +67,20 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
   assert.equal(body.requestOrigin, 'GITHUB_ACTION');
   assert.equal(body.effect, 'SubmitForReview');
   assert.equal(body.reports.length, 1);
-  assert.deepEqual(body.reports[0]?.orlReport?.github, {
-    repository: 'gomboc-ai/actions',
-    prNumber: 42,
-    headSha: 'head',
-  });
   assert.equal(body.reports[0]?.orlReport?.type, 'Report');
   assert.equal(body.reports[0]?.orlReport?.version, 'v1');
-  assert.deepEqual(body.reports[0]?.orlReport?.spec?.rules, [
+  assert.equal(body.reports[0]?.orlReport?.workspace, '.');
+  assert.equal(body.reports[0]?.orlReport?.language, 'terraform');
+  assert.deepEqual(body.reports[0]?.orlReport?.rules, [
     {
       name: 'orl-rule:s3',
       findings: 2,
+      fixes: 0,
+      changes: 0,
+      errors: [],
+      files: [],
       metadata: {
+        name: 'orl-rule:s3',
         description: 'raw rule metadata should be preserved',
       },
     },
