@@ -8,7 +8,7 @@
     "check:dist": "npm run build && git diff --exit-code -- 'dist/**/*.js'"
   },
   "dependencies": {
-    "@gomboc-ai/gomboc-node-sdk": "^2.1.2",
+    "@gomboc-ai/gomboc-node-sdk": "^2.2.2",
     "yaml": "^2.7.0"
   },
   "devDependencies": {

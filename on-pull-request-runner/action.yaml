@@ -155,6 +155,7 @@ runs:
       env:
         GOMBOC_ACCESS_TOKEN: ${{ env.GOMBOC_ACCESS_TOKEN }}
         INPUT_ORL_CHANNEL: ${{ inputs.orl-channel }}
+        INPUT_PORTAL_SERVICE_URL: ${{ inputs.portal-service-url }}
         RULES_SERVICE_URL: ${{ inputs.rules-service-url }}
       run: node dist/resolve-channel.js
 
@@ -164,7 +165,7 @@ runs:
       uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ${{ runner.temp }}/orl-rules
-        key: orl-rules-${{ steps.orl-image.outputs.ref }}-${{ inputs.rules-service-url }}-${{ steps.resolve-channel.outputs.channel }}
+        key: orl-rules-${{ steps.orl-image.outputs.ref }}-${{ inputs.rules-service-url }}-${{ steps.resolve-channel.outputs.encoded-channel }}
 
     - name: Pull rules
       id: pull-rules

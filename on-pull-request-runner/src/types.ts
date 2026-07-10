@@ -1,18 +1,39 @@
 /**
  * Shared types for ORL reports, workspace discovery, and evaluation batches.
  */
-import type { CreateOrlReportEventRequestBody } from '@gomboc-ai/gomboc-node-sdk';
+import type { IIntegrationsServiceSdk } from '@gomboc-ai/gomboc-node-sdk';
 
-/** ORL report payload accepted by Integrations `createOrlReportEvent`. */
+export type CreateOrlReportEventV2RequestBody = Parameters<
+  IIntegrationsServiceSdk['createOrlReportEventV2']
+>[0];
+
+/** Normalized ORL report payload used by PR feedback and summaries. */
+export type NormalizedOrlReport = {
+  type: 'Report';
+  version: string;
+  metadata: {
+    name: string;
+    description?: string;
+    annotations?: Record<string, string>;
+  };
+  workspace: string;
+  language: string;
+  rules_applied: number;
+  findings: number;
+  fixes: number;
+  changes: number;
+  rules: unknown[];
+  errors: unknown[];
+};
+
+/** Flat ORL report payload sent to Integrations `createOrlReportEventV2`. */
 export type IntegrationsOrlReport = NonNullable<
-  NonNullable<CreateOrlReportEventRequestBody['reports'][number]>['orlReport']
+  CreateOrlReportEventV2RequestBody['reports'][number]['orlReport']
 >;
 
-export type IntegrationsOrlReportGitHub = {
-  repository: string;
-  prNumber: number;
-  headSha: string;
-};
+export type IntegrationsOrlReportRule = IntegrationsOrlReport['rules'][number];
+export type IntegrationsOrlFindingLocation =
+  NonNullable<IntegrationsOrlReportRule['findingLocations']>[number];
 
 /** File/line anchor in an ORL report (`Location` in report schema). */
 export type OrlLocation = {
@@ -54,6 +75,8 @@ export type OrlReportRule = {
 
 /** Parsed ORL `report.yaml` top-level shape. */
 export type OrlReport = {
+  type?: string;
+  version?: string;
   metadata: {
     name: string;
     display_name?: string;

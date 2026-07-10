@@ -112,6 +112,7 @@ async function runBatch(args) {
 }
 async function main() {
     const startedAt = Date.now();
+    const startedAtIso = new Date(startedAt).toISOString();
     const batches = loadBatches();
     const image = requireEnv('ORL_IMAGE');
     const workspaceRoot = requireEnv('GITHUB_WORKSPACE');
@@ -177,7 +178,13 @@ async function main() {
     }
     appendStepSummary(summary);
     const durationInSeconds = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
-    fs.writeFileSync(path.join(getArtifactsRoot(), 'run-complete.json'), JSON.stringify({ ok: !outcome.hadExecutionFailure, durationInSeconds }, null, 2));
+    const completedAtIso = new Date().toISOString();
+    fs.writeFileSync(path.join(getArtifactsRoot(), 'run-complete.json'), JSON.stringify({
+        ok: !outcome.hadExecutionFailure,
+        durationInSeconds,
+        startedAt: startedAtIso,
+        completedAt: completedAtIso,
+    }, null, 2));
     if (outcome.hadExecutionFailure) {
         throw new Error('One or more ORL remediate batches failed to execute (exit 1)');
     }
