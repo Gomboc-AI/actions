@@ -28,10 +28,14 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
       authorLogin: 'octocat',
     },
     gitDiffs: {
-      'main.tf': 'diff --git a/main.tf b/main.tf',
+      'main.tf': Buffer.from('diff --git a/main.tf b/main.tf', 'utf8').toString(
+        'base64'
+      ),
     },
     remediatedFileContent: {
-      'main.tf': 'resource "aws_s3_bucket" "ok" {}',
+      'main.tf': Buffer.from('resource "aws_s3_bucket" "ok" {}', 'utf8').toString(
+        'base64'
+      ),
     },
     workflowStatus: { status: 'success', errors: [] },
     timing: {
@@ -87,10 +91,14 @@ test('buildCreateOrlReportEventBody returns SDK-typed payload with GitHub contex
   ]);
   assert.equal(body.durationInSeconds, 37);
   assert.deepEqual(body.gitDiffs, {
-    'main.tf': 'diff --git a/main.tf b/main.tf',
+    'main.tf': Buffer.from('diff --git a/main.tf b/main.tf', 'utf8').toString(
+      'base64'
+    ),
   });
   assert.deepEqual(body.remediatedFileContent, {
-    'main.tf': 'resource "aws_s3_bucket" "ok" {}',
+    'main.tf': Buffer.from('resource "aws_s3_bucket" "ok" {}', 'utf8').toString(
+      'base64'
+    ),
   });
   assert.deepEqual(body.workflowStatus, { status: 'success', errors: [] });
   assert.deepEqual(body.timing, {

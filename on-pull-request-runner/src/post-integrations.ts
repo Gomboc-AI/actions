@@ -65,6 +65,11 @@ function nonEmptyRecord(record: Record<string, string>): Record<string, string> 
   return Object.keys(record).length ? record : undefined;
 }
 
+/** Remediations expects filename → base64(utf8) for gitDiffs and remediatedFileContent. */
+function encodeBase64Utf8(value: string): string {
+  return Buffer.from(value, 'utf8').toString('base64');
+}
+
 function jsonSizeBytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
@@ -89,7 +94,7 @@ function collectGitDiffs(args: {
         cwd: args.workspaceRoot,
         path: file,
       });
-      if (diff) diffs[file] = diff;
+      if (diff) diffs[file] = encodeBase64Utf8(diff);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`Could not collect git diff for ${file}: ${message}`);
@@ -110,7 +115,7 @@ function collectRemediatedFileContent(args: {
     const abs = path.join(args.workspaceRoot, file);
     if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) continue;
     try {
-      contents[file] = fs.readFileSync(abs, 'utf8');
+      contents[file] = encodeBase64Utf8(fs.readFileSync(abs, 'utf8'));
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.warn(`Could not collect remediated content for ${file}: ${message}`);

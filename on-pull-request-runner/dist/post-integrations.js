@@ -40,6 +40,10 @@ function loadScannableFiles() {
 function nonEmptyRecord(record) {
     return Object.keys(record).length ? record : undefined;
 }
+/** Remediations expects filename → base64(utf8) for gitDiffs and remediatedFileContent. */
+function encodeBase64Utf8(value) {
+    return Buffer.from(value, 'utf8').toString('base64');
+}
 function jsonSizeBytes(value) {
     return Buffer.byteLength(JSON.stringify(value), 'utf8');
 }
@@ -58,7 +62,7 @@ function collectGitDiffs(args) {
                 path: file,
             });
             if (diff)
-                diffs[file] = diff;
+                diffs[file] = encodeBase64Utf8(diff);
         }
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);
@@ -76,7 +80,7 @@ function collectRemediatedFileContent(args) {
         if (!fs.existsSync(abs) || !fs.statSync(abs).isFile())
             continue;
         try {
-            contents[file] = fs.readFileSync(abs, 'utf8');
+            contents[file] = encodeBase64Utf8(fs.readFileSync(abs, 'utf8'));
         }
         catch (err) {
             const message = err instanceof Error ? err.message : String(err);

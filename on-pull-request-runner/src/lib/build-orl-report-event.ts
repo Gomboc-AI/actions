@@ -113,7 +113,9 @@ export function buildCreateOrlReportEventBody(args: {
   github: PullRequestContext;
   durationInSeconds: number;
   resultingPullRequest?: ScmPullRequestRef;
+  /** filename → base64(utf8 unified diff); remediations decodes before rendering */
   gitDiffs?: Record<string, string>;
+  /** filename → base64(utf8 file contents) after remediation */
   remediatedFileContent?: Record<string, string>;
   workflowStatus: { status: 'success' | 'failure'; errors: string[] };
   timing?: { startedAt?: string; completedAt?: string };
