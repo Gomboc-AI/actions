@@ -104,4 +104,50 @@ describe('merge-orl-results', () => {
     assert.equal(outcome.mergedReport.spec.findings, 2);
     assert.equal(outcome.mergedReport.spec.fixes, 1);
   });
+
+  it('normalizes finding location file paths to repo-relative paths during merge', () => {
+    const outcome = mergeBatchResults([
+      {
+        batchId: 'a',
+        workspacePath: 'infra/terraform',
+        orlLanguage: 'terraform',
+        exitCode: 0,
+        report: {
+          metadata: { name: 'r1' },
+          spec: {
+            rules_applied: 1,
+            findings: 1,
+            fixes: 0,
+            changes: 0,
+            rules: [
+              {
+                name: 'rule-a',
+                finding_locations: [
+                  {
+                    id: 'f1',
+                    original_location: {
+                      file_path: 'main.tf',
+                      start_line: 10,
+                    },
+                    resolved_location: {
+                      file_path: 'main.tf',
+                      start_line: 12,
+                    },
+                  },
+                ],
+              },
+            ],
+            errors: [],
+          },
+        },
+        diagnostics: null,
+      },
+    ]);
+
+    const rules = outcome.mergedReport.spec.rules;
+    assert.equal(rules.length, 1);
+    const loc = rules[0].finding_locations[0];
+    assert.equal(loc.original_location.file_path, 'infra/terraform/main.tf');
+    assert.equal(loc.resolved_location.file_path, 'infra/terraform/main.tf');
+  });
 });

@@ -21,10 +21,10 @@ function loadBatches() {
     return raw.batches;
 }
 /**
- * Stages one batch, runs `orl remediate` in Docker, and copies report/diagnostics to artifacts.
+ * Stages one batch, runs `orl audit`/`remediate` in Docker, and copies report/diagnostics to artifacts.
  */
 async function runBatch(args) {
-    const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs, orlTimeout, orlRuleTimeout, } = args;
+    const { batch, image, rulesDir, workspaceRoot, hooksDir, batchWorkRoot, timeoutMs, mode, orlTimeout, orlRuleTimeout, } = args;
     const { workDir, remediatePath, stagedFiles } = stageBatchWorkspace({
         batch,
         workspaceRoot,
@@ -34,8 +34,7 @@ async function runBatch(args) {
     const reportHost = path.join(workDir, '.orl', 'report.yaml');
     const { uid, gid } = currentUidGid();
     const containerName = `gomboc-orl-${batch.batchId}`;
-    const orlArgv = [
-        'remediate',
+    const baseOrlArgv = [
         remediatePath,
         '--hooks-dir',
         '/workspace/.orl/hooks',
@@ -49,32 +48,92 @@ async function runBatch(args) {
         '/workspace/.orl/report.yaml',
     ];
     if (orlTimeout) {
-        orlArgv.push('--timeout', orlTimeout);
+        baseOrlArgv.push('--timeout', orlTimeout);
     }
     if (orlRuleTimeout) {
-        orlArgv.push('--default-rule-timeout', orlRuleTimeout);
+        baseOrlArgv.push('--default-rule-timeout', orlRuleTimeout);
     }
-    const { status, stderr, stdout } = await dockerRun({
-        argv: [
-            'run',
-            '--rm',
-            '--name',
-            containerName,
-            '--user',
-            `${uid}:${gid}`,
-            '-v',
-            `${workDir}:/workspace`,
-            '-v',
-            `${rulesDir}:/workspace/rules:ro`,
-            image,
-            ...orlArgv,
-        ],
-        timeoutMs,
-        containerName,
-    });
     let report = null;
-    if (fs.existsSync(reportHost)) {
-        report = yaml.parse(fs.readFileSync(reportHost, 'utf8'));
+    let status = 0;
+    let stderr = '';
+    let stdout = '';
+    const runDockerWithSubcommand = async (subcommand) => {
+        return await dockerRun({
+            argv: [
+                'run',
+                '--rm',
+                '--name',
+                containerName,
+                '--user',
+                `${uid}:${gid}`,
+                '-v',
+                `${workDir}:/workspace`,
+                '-v',
+                `${rulesDir}:/workspace/rules:ro`,
+                image,
+                subcommand,
+                ...baseOrlArgv,
+            ],
+            timeoutMs,
+            containerName,
+        });
+    };
+    const isAudit = mode === 'audit';
+    if (isAudit) {
+        console.log(`[Batch ${batch.batchId}] Starting Pass 1: orl audit`);
+        const res = await runDockerWithSubcommand('audit');
+        status = res.status;
+        stderr = res.stderr;
+        stdout = res.stdout;
+        if (stdout) {
+            console.log(`[Batch ${batch.batchId}] orl audit stdout:\n${stdout}`);
+        }
+        if (stderr) {
+            console.warn(`[Batch ${batch.batchId}] orl audit stderr:\n${stderr}`);
+        }
+        if (fs.existsSync(reportHost)) {
+            report = yaml.parse(fs.readFileSync(reportHost, 'utf8'));
+        }
+        const totalFindings = report?.spec?.findings ?? 0;
+        if (totalFindings === 0 || status === 0) {
+            console.log(`[Batch ${batch.batchId}] Pass 1 complete: 0 findings (or exit 0). Fast-Path Exit.`);
+        }
+        else {
+            let hasRemediable = false;
+            for (const rule of report?.spec?.rules ?? []) {
+                for (const loc of rule.finding_locations ?? []) {
+                    if (loc.remediable) {
+                        hasRemediable = true;
+                        break;
+                    }
+                }
+                if (hasRemediable)
+                    break;
+            }
+            if (hasRemediable) {
+                console.log(`[Batch ${batch.batchId}] Remediable findings found. Starting Pass 2: orl remediate`);
+                const res2 = await runDockerWithSubcommand('remediate');
+                status = res2.status;
+                stderr = res2.stderr;
+                stdout = res2.stdout;
+                if (fs.existsSync(reportHost)) {
+                    report = yaml.parse(fs.readFileSync(reportHost, 'utf8'));
+                }
+            }
+            else {
+                console.log(`[Batch ${batch.batchId}] No remediable findings found. Skipping Pass 2.`);
+            }
+        }
+    }
+    else {
+        console.log(`[Batch ${batch.batchId}] Starting remediate`);
+        const res = await runDockerWithSubcommand('remediate');
+        status = res.status;
+        stderr = res.stderr;
+        stdout = res.stdout;
+        if (fs.existsSync(reportHost)) {
+            report = yaml.parse(fs.readFileSync(reportHost, 'utf8'));
+        }
     }
     const diagHost = path.join(workDir, '.orl', 'diagnostics', 'diagnostics.json');
     let diagnostics = null;
@@ -126,6 +185,7 @@ async function main() {
     const orlTimeout = (process.env.INPUT_ORL_TIMEOUT ?? '').trim() || undefined;
     const orlRuleTimeout = (process.env.INPUT_ORL_RULE_TIMEOUT ?? '').trim() || undefined;
     const concurrency = envInt('ORL_REMEDIATE_CONCURRENCY', 3);
+    const mode = (process.env.INPUT_MODE ?? '').trim() || 'audit';
     fs.mkdirSync(batchWorkRoot, { recursive: true });
     const results = await mapPool({
         items: batches,
@@ -138,6 +198,7 @@ async function main() {
             hooksDir,
             batchWorkRoot,
             timeoutMs,
+            mode,
             orlTimeout,
             orlRuleTimeout,
         }),

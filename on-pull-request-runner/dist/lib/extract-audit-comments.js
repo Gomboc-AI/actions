@@ -1,3 +1,11 @@
+/**
+ * Builds inline PR comment candidates from ORL batch reports and diagnostics.
+ *
+ * Primary anchor source: `spec.rules[].finding_locations` (ORL report schema).
+ */
+import fs from 'node:fs';
+import path from 'node:path';
+import { artifactPath } from './artifacts.js';
 import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-report-path.js';
 import { formatScoreLabel, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
 import { portalRuleUrl } from './portal-url.js';
@@ -17,6 +25,29 @@ export function parseAuditCommentDedupeKey(body) {
     if (!match)
         return null;
     return match[1] ?? null;
+}
+function getMutatedSuggestion(args) {
+    const { batchId, repoPath, resolvedLocation } = args;
+    try {
+        const workDir = artifactPath('orl-workspace');
+        const mutatedFilePath = path.join(workDir, batchId, repoPath);
+        if (!fs.existsSync(mutatedFilePath)) {
+            return null;
+        }
+        const content = fs.readFileSync(mutatedFilePath, 'utf8');
+        const lines = content.split(/\r?\n/);
+        const startLine = resolvedLocation.start_line;
+        const endLine = resolvedLocation.end_line ?? startLine;
+        if (startLine <= 0 || startLine > lines.length) {
+            return null;
+        }
+        const suggestionLines = lines.slice(startLine - 1, endLine);
+        return suggestionLines.join('\n');
+    }
+    catch (err) {
+        console.error(`Failed to read mutated file for suggestion: ${err}`);
+        return null;
+    }
 }
 function ruleMeta(rule) {
     const meta = rule.metadata;
@@ -166,6 +197,9 @@ function buildRemediationCandidatesFromResolvedLocations(args) {
     const meta = ruleMeta(rule);
     const candidates = [];
     for (const row of rule.finding_locations ?? []) {
+        // Only post leftover findings in remediation mode (skip remediated ones)
+        if (row.remediable === true && row.remediated === true)
+            continue;
         const loc = fixLocationFromFindingRow(row);
         if (!loc?.file_path)
             continue;
@@ -179,11 +213,17 @@ function buildRemediationCandidatesFromResolvedLocations(args) {
         const anchor = anchorFromLocation(loc);
         if (!anchor)
             continue;
+        let description = meta.description;
+        if (row.message) {
+            const levelEmoji = row.level === 'WARN' ? '🟡' : row.level === 'INFO' ? '🔵' : '🔴';
+            const diagDesc = `**${levelEmoji} [${row.level ?? 'ERROR'}]** ${row.message}`;
+            description = diagDesc + (meta.description ? `\n\n${meta.description}` : '');
+        }
         candidates.push({
             dedupeKey: remediationFindingDedupeKey(rule.name, row.id || `${rule.name}-finding`, scannablePath),
             ruleName: rule.name,
             displayName: meta.displayName,
-            description: meta.description,
+            description,
             impact: meta.impact,
             impactStatement: meta.impactStatement,
             risk: meta.risk,
@@ -232,6 +272,7 @@ function tryFindingLocationRows(args) {
             scannablePath,
             anchor,
             dedupeKey: canonicalAnchorDedupeKey(rule.name, scannablePath, anchor.line),
+            row,
         });
     }
     return out;
@@ -320,11 +361,30 @@ export function extractAuditCommentCandidates(args) {
                 if (seen.has(attempt.dedupeKey))
                     continue;
                 seen.add(attempt.dedupeKey);
+                const row = attempt.row;
+                let description = meta.description;
+                let suggestion = undefined;
+                if (row) {
+                    if (row.remediable === false || row.remediated === false) {
+                        if (row.message) {
+                            const levelEmoji = row.level === 'WARN' ? '🟡' : row.level === 'INFO' ? '🔵' : '🔴';
+                            const diagDesc = `**${levelEmoji} [${row.level ?? 'ERROR'}]** ${row.message}`;
+                            description = diagDesc + (meta.description ? `\n\n${meta.description}` : '');
+                        }
+                    }
+                    else if (row.remediable === true && row.remediated === true && row.resolved_location) {
+                        suggestion = getMutatedSuggestion({
+                            batchId,
+                            repoPath: attempt.scannablePath,
+                            resolvedLocation: row.resolved_location,
+                        }) ?? undefined;
+                    }
+                }
                 candidates.push({
                     dedupeKey: attempt.dedupeKey,
                     ruleName: rule.name,
                     displayName: meta.displayName,
-                    description: meta.description,
+                    description,
                     impact: meta.impact,
                     impactStatement: meta.impactStatement,
                     risk: meta.risk,
@@ -333,6 +393,7 @@ export function extractAuditCommentCandidates(args) {
                     line: attempt.anchor.line,
                     startLine: attempt.anchor.startLine,
                     endLine: attempt.anchor.endLine,
+                    suggestion,
                 });
             }
         }
@@ -432,6 +493,9 @@ export function formatInlineCommentBody(candidate, options = {}) {
         score: candidate.risk,
         statement: candidate.riskStatement,
     }));
+    if (candidate.suggestion !== undefined) {
+        lines.push('', '```suggestion', candidate.suggestion, '```');
+    }
     return lines.join('\n').trimEnd();
 }
 //# sourceMappingURL=extract-audit-comments.js.map
