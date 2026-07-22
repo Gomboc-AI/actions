@@ -68,25 +68,32 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
   const { uid, gid } = currentUidGid();
   const containerName = `gomboc-orl-${batch.batchId}`;
 
-  const baseOrlArgv = [
-    remediatePath,
-    '--hooks-dir',
-    '/workspace/.orl/hooks',
-    '--rulespace',
-    '/workspace/rules',
-    '--recursive-rulespace',
-    '--include-location-info',
-    '--language',
-    batch.orlLanguage,
-    '--out',
-    '/workspace/.orl/report.yaml',
-  ];
-  if (orlTimeout) {
-    baseOrlArgv.push('--timeout', orlTimeout);
-  }
-  if (orlRuleTimeout) {
-    baseOrlArgv.push('--default-rule-timeout', orlRuleTimeout);
-  }
+  const buildOrlArgv = (subcommand: string) => {
+    const argv = [
+      subcommand,
+      remediatePath,
+    ];
+    if (subcommand === 'remediate') {
+      argv.push('--hooks-dir', '/workspace/.orl/hooks');
+    }
+    argv.push(
+      '--rulespace',
+      '/workspace/rules',
+      '--recursive-rulespace',
+      '--include-location-info',
+      '--language',
+      batch.orlLanguage,
+      '--out',
+      '/workspace/.orl/report.yaml'
+    );
+    if (orlTimeout) {
+      argv.push('--timeout', orlTimeout);
+    }
+    if (orlRuleTimeout) {
+      argv.push('--default-rule-timeout', orlRuleTimeout);
+    }
+    return argv;
+  };
 
   let report: OrlReport | null = null;
   let status = 0;
@@ -107,8 +114,7 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
         '-v',
         `${rulesDir}:/workspace/rules:ro`,
         image,
-        subcommand,
-        ...baseOrlArgv,
+        ...buildOrlArgv(subcommand),
       ],
       timeoutMs,
       containerName,
