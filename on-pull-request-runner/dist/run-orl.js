@@ -42,7 +42,7 @@ async function runBatch(args) {
         if (subcommand === 'remediate') {
             argv.push('--hooks-dir', '/workspace/.orl/hooks');
         }
-        argv.push('--rulespace', '/workspace/rules', '--recursive-rulespace');
+        argv.push('--rulespace', '/workspace/rules', '--recursive-rulespace', '--report-format', 'findings-only');
         if (subcommand === 'remediate') {
             argv.push('--include-location-info');
         }

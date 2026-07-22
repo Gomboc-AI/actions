@@ -79,7 +79,9 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
     argv.push(
       '--rulespace',
       '/workspace/rules',
-      '--recursive-rulespace'
+      '--recursive-rulespace',
+      '--report-format',
+      'findings-only'
     );
     if (subcommand === 'remediate') {
       argv.push('--include-location-info');
