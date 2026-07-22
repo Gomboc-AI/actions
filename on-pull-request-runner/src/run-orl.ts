@@ -79,8 +79,12 @@ async function runBatch(args: RunBatchArgs): Promise<BatchResult> {
     argv.push(
       '--rulespace',
       '/workspace/rules',
-      '--recursive-rulespace',
-      '--include-location-info',
+      '--recursive-rulespace'
+    );
+    if (subcommand === 'remediate') {
+      argv.push('--include-location-info');
+    }
+    argv.push(
       '--language',
       batch.orlLanguage,
       '--out',

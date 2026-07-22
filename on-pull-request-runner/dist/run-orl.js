@@ -42,7 +42,11 @@ async function runBatch(args) {
         if (subcommand === 'remediate') {
             argv.push('--hooks-dir', '/workspace/.orl/hooks');
         }
-        argv.push('--rulespace', '/workspace/rules', '--recursive-rulespace', '--include-location-info', '--language', batch.orlLanguage, '--out', '/workspace/.orl/report.yaml');
+        argv.push('--rulespace', '/workspace/rules', '--recursive-rulespace');
+        if (subcommand === 'remediate') {
+            argv.push('--include-location-info');
+        }
+        argv.push('--language', batch.orlLanguage, '--out', '/workspace/.orl/report.yaml');
         if (orlTimeout) {
             argv.push('--timeout', orlTimeout);
         }
