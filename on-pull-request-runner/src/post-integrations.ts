@@ -71,7 +71,10 @@ function encodeBase64Utf8(value: string): string {
 }
 
 function jsonSizeBytes(value: unknown): number {
-  return Buffer.byteLength(JSON.stringify(value), 'utf8');
+  if (value === undefined) return 0;
+  const str = JSON.stringify(value);
+  if (str === undefined) return 0;
+  return Buffer.byteLength(str, 'utf8');
 }
 
 function formatBytes(bytes: number): string {

@@ -45,7 +45,12 @@ function encodeBase64Utf8(value) {
     return Buffer.from(value, 'utf8').toString('base64');
 }
 function jsonSizeBytes(value) {
-    return Buffer.byteLength(JSON.stringify(value), 'utf8');
+    if (value === undefined)
+        return 0;
+    const str = JSON.stringify(value);
+    if (str === undefined)
+        return 0;
+    return Buffer.byteLength(str, 'utf8');
 }
 function formatBytes(bytes) {
     const mib = bytes / (1024 * 1024);
