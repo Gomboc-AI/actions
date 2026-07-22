@@ -3,6 +3,7 @@ import assert from 'node:assert';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getArtifactsRoot } from '../dist/lib/artifacts.js';
 import {
   capAuditCommentCandidates,
   extractAuditCommentCandidates,
@@ -838,5 +839,135 @@ describe('extract-audit-comments', () => {
       candidates.map((c) => c.line).sort((a, b) => a - b),
       [40, 55, 70, 88]
     );
+  });
+
+  it('extracts custom level, message, and suggestion block from mutated file', () => {
+    const workDir = path.join(getArtifactsRoot(), 'orl-workspace', 'batch-0');
+    fs.mkdirSync(workDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(workDir, 'main.tf'),
+      'resource "aws_s3_bucket" "b" {\n  bucket = "mutated-bucket-name"\n}\n'
+    );
+
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 1,
+              fixes: 1,
+              changes: 1,
+              rules: [
+                {
+                  name: 'orl-rule:uniform-bucket-level-access',
+                  metadata: {
+                    name: 'orl-rule:uniform-bucket-level-access',
+                    display_name: 'Ensure uniform bucket-level access',
+                  },
+                  findings: 1,
+                  finding_locations: [
+                    {
+                      id: 'finding-1',
+                      remediable: true,
+                      remediated: true,
+                      message: 'This should be auto-remediated',
+                      level: 'WARN',
+                      original_location: {
+                        file_path: 'main.tf',
+                        start_line: 2,
+                      },
+                      resolved_location: {
+                        file_path: 'main.tf',
+                        start_line: 2,
+                        end_line: 2,
+                      },
+                    },
+                  ],
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+    });
+
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].suggestion, '  bucket = "mutated-bucket-name"');
+
+    const body = formatInlineCommentBody(candidates[0]);
+    assert.match(body, /```suggestion/);
+    assert.match(body, /mutated-bucket-name/);
+
+    // Clean up
+    fs.unlinkSync(path.join(workDir, 'main.tf'));
+  });
+
+  it('skips remediated findings and formats leftover findings in remediation mode', () => {
+    const candidates = extractAuditCommentCandidates({
+      batches: [],
+      batchReports: [
+        {
+          batchId: 'batch-0',
+          workspacePath: '.',
+          report: {
+            metadata: { name: 'r' },
+            spec: {
+              rules_applied: 1,
+              findings: 2,
+              rules: [
+                {
+                  name: 'orl-rule:uniform-bucket-level-access',
+                  metadata: {
+                    name: 'orl-rule:uniform-bucket-level-access',
+                    display_name: 'Ensure uniform bucket-level access',
+                  },
+                  findings: 2,
+                  finding_locations: [
+                    {
+                      id: 'finding-remediated',
+                      remediable: true,
+                      remediated: true,
+                      resolved_location: {
+                        file_path: 'main.tf',
+                        start_line: 12,
+                      },
+                    },
+                    {
+                      id: 'finding-leftover',
+                      remediable: false,
+                      remediated: false,
+                      message: 'Manual action required for bucket policy',
+                      level: 'ERROR',
+                      resolved_location: {
+                        file_path: 'main.tf',
+                        start_line: 14,
+                      },
+                    },
+                  ],
+                },
+              ],
+              errors: [],
+            },
+          },
+        },
+      ],
+      batchDiagnostics: [{ batchId: 'batch-0', diagnostics: null }],
+      prScannableFiles: new Set(['main.tf']),
+      anchorStrategy: 'remediation',
+    });
+
+    // Remediated finding should be skipped, only leftover is kept
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].line, 14);
+    assert.match(candidates[0].description, /🔴 \[ERROR\]/);
+    assert.match(candidates[0].description, /Manual action required for bucket policy/);
   });
 });

@@ -8,6 +8,7 @@ import {
   isOrlTimeoutResult,
 } from './orl-timeout.js';
 import { countRuleFindings } from './report-counts.js';
+import { reportPathToRepoPath } from './normalize-report-path.js';
 
 /** Result of one parallel `orl remediate` docker invocation. */
 export type BatchResult = {
@@ -86,6 +87,22 @@ export function mergeBatchResults(results: BatchResult[]): MergeOutcome {
     merged.spec.fixes += Math.max(spec.fixes ?? 0, fromRuleFixes);
     merged.spec.changes += Math.max(spec.changes ?? 0, fromRuleChanges);
     if (spec.rules?.length) {
+      for (const rule of spec.rules) {
+        for (const loc of rule.finding_locations ?? []) {
+          if (loc.original_location?.file_path) {
+            loc.original_location.file_path = reportPathToRepoPath({
+              reportPath: loc.original_location.file_path,
+              workspacePath: r.workspacePath,
+            });
+          }
+          if (loc.resolved_location?.file_path) {
+            loc.resolved_location.file_path = reportPathToRepoPath({
+              reportPath: loc.resolved_location.file_path,
+              workspacePath: r.workspacePath,
+            });
+          }
+        }
+      }
       merged.spec.rules.push(...spec.rules);
     }
     if (spec.errors?.length) {

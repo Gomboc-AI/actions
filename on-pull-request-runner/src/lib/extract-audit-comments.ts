@@ -3,6 +3,8 @@
  *
  * Primary anchor source: `spec.rules[].finding_locations` (ORL report schema).
  */
+import fs from 'node:fs';
+import path from 'node:path';
 import type {
   EvaluationBatch,
   OrlFindingLocationRow,
@@ -10,6 +12,7 @@ import type {
   OrlReport,
   OrlReportRule,
 } from '../types.js';
+import { artifactPath } from './artifacts.js';
 import { normalizeReportFilePath, reportPathToRepoPath } from './normalize-report-path.js';
 import { formatScoreLabel, ruleDescription, ruleImpactRisk } from './rule-metadata.js';
 import { portalRuleUrl } from './portal-url.js';
@@ -48,7 +51,38 @@ export type AuditCommentCandidate = {
   line: number;
   startLine?: number;
   endLine?: number;
+  suggestion?: string;
 };
+
+function getMutatedSuggestion(args: {
+  batchId: string;
+  repoPath: string;
+  resolvedLocation: OrlLocation;
+}): string | null {
+  const { batchId, repoPath, resolvedLocation } = args;
+  try {
+    const workDir = artifactPath('orl-workspace');
+    const mutatedFilePath = path.join(workDir, batchId, repoPath);
+    if (!fs.existsSync(mutatedFilePath)) {
+      return null;
+    }
+    const content = fs.readFileSync(mutatedFilePath, 'utf8');
+    const lines = content.split(/\r?\n/);
+
+    const startLine = resolvedLocation.start_line;
+    const endLine = resolvedLocation.end_line ?? startLine;
+
+    if (startLine <= 0 || startLine > lines.length) {
+      return null;
+    }
+
+    const suggestionLines = lines.slice(startLine - 1, endLine);
+    return suggestionLines.join('\n');
+  } catch (err) {
+    console.error(`Failed to read mutated file for suggestion: ${err}`);
+    return null;
+  }
+}
 
 export type DiagnosticsShape = {
   version?: number;
@@ -253,6 +287,7 @@ type AnchorAttempt = {
   anchor: { line: number; startLine?: number; endLine?: number };
   dedupeKey: string;
   ruleName?: string;
+  row?: OrlFindingLocationRow;
 };
 
 /** One inline comment per rule × file × line (ignores finding row id). */
@@ -283,6 +318,9 @@ function buildRemediationCandidatesFromResolvedLocations(args: {
   const candidates: AuditCommentCandidate[] = [];
 
   for (const row of rule.finding_locations ?? []) {
+    // Only post leftover findings in remediation mode (skip remediated ones)
+    if (row.remediable === true && row.remediated === true) continue;
+
     const loc = fixLocationFromFindingRow(row);
     if (!loc?.file_path) continue;
 
@@ -296,6 +334,13 @@ function buildRemediationCandidatesFromResolvedLocations(args: {
     const anchor = anchorFromLocation(loc);
     if (!anchor) continue;
 
+    let description = meta.description;
+    if (row.message) {
+      const levelEmoji = row.level === 'WARN' ? '🟡' : row.level === 'INFO' ? '🔵' : '🔴';
+      const diagDesc = `**${levelEmoji} [${row.level ?? 'ERROR'}]** ${row.message}`;
+      description = diagDesc + (meta.description ? `\n\n${meta.description}` : '');
+    }
+
     candidates.push({
       dedupeKey: remediationFindingDedupeKey(
         rule.name,
@@ -304,7 +349,7 @@ function buildRemediationCandidatesFromResolvedLocations(args: {
       ),
       ruleName: rule.name,
       displayName: meta.displayName,
-      description: meta.description,
+      description,
       impact: meta.impact,
       impactStatement: meta.impactStatement,
       risk: meta.risk,
@@ -369,6 +414,7 @@ function tryFindingLocationRows(args: {
       scannablePath,
       anchor,
       dedupeKey: canonicalAnchorDedupeKey(rule.name, scannablePath, anchor.line),
+      row,
     });
   }
 
@@ -485,11 +531,31 @@ export function extractAuditCommentCandidates(
         if (seen.has(attempt.dedupeKey)) continue;
         seen.add(attempt.dedupeKey);
 
+        const row = attempt.row;
+        let description = meta.description;
+        let suggestion: string | undefined = undefined;
+
+        if (row) {
+          if (row.remediable === false || row.remediated === false) {
+            if (row.message) {
+              const levelEmoji = row.level === 'WARN' ? '🟡' : row.level === 'INFO' ? '🔵' : '🔴';
+              const diagDesc = `**${levelEmoji} [${row.level ?? 'ERROR'}]** ${row.message}`;
+              description = diagDesc + (meta.description ? `\n\n${meta.description}` : '');
+            }
+          } else if (row.remediable === true && row.remediated === true && row.resolved_location) {
+            suggestion = getMutatedSuggestion({
+              batchId,
+              repoPath: attempt.scannablePath,
+              resolvedLocation: row.resolved_location,
+            }) ?? undefined;
+          }
+        }
+
         candidates.push({
           dedupeKey: attempt.dedupeKey,
           ruleName: rule.name,
           displayName: meta.displayName,
-          description: meta.description,
+          description,
           impact: meta.impact,
           impactStatement: meta.impactStatement,
           risk: meta.risk,
@@ -498,6 +564,7 @@ export function extractAuditCommentCandidates(
           line: attempt.anchor.line,
           startLine: attempt.anchor.startLine,
           endLine: attempt.anchor.endLine,
+          suggestion,
         });
       }
     }
@@ -635,6 +702,10 @@ export function formatInlineCommentBody(
       statement: candidate.riskStatement,
     })
   );
+
+  if (candidate.suggestion !== undefined) {
+    lines.push('', '```suggestion', candidate.suggestion, '```');
+  }
 
   return lines.join('\n').trimEnd();
 }

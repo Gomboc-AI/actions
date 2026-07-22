@@ -51,6 +51,15 @@ export type OrlFindingLocationRow = {
   original_location?: OrlLocation;
   resolved_location?: OrlLocation;
   resolution_status?: string;
+  remediable?: boolean;
+  remediated?: boolean;
+  message?: string;
+  level?: 'ERROR' | 'WARN' | 'INFO' | string;
+  snippet?: {
+    before: string;
+    target: string;
+    after: string;
+  };
 };
 
 /** One rule entry inside `report.yaml` `spec.rules`. */
